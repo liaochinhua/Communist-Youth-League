@@ -1,0 +1,10 @@
+{
+  "base_url": "http://10.80.98.106",
+  "local_root": "C:\\Users\\你的用户名\\Desktop\\团委档案",
+  "old_uploader": "范芸",
+  "me": "刘笑成",
+  "id_base": 0,
+  "record_total": 238,
+  "exclude_dirs": ["学代会照片"],
+  "stop_words": ["浙大宁波理工学院", "浙江大学宁波理工学院"]
+}

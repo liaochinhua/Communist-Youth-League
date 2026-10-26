@@ -1,0 +1,6 @@
+﻿这里放的是「导出的 records.csv」样例（13 条，取自真实案卷的学院总结部分），
+用来在没连内网的情况下先把 2_生成匹配表.py 跑通、看看输出长什么样：
+
+    python scripts\2_生成匹配表.py --records 样例\records_样例.csv --root "你的档案目录"
+
+真实使用时 records.csv 由 scripts\1_导出服务器清单.js 在浏览器里导出。

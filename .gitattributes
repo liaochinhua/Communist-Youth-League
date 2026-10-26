@@ -1,0 +1,10 @@
+# 统一行尾，避免 Windows 上 .bat 被转成 LF 后跑不起来
+* text=auto eol=lf
+*.bat text eol=crlf
+*.ps1 text eol=crlf
+*.cmd text eol=crlf
+
+# 二进制
+*.png binary
+*.jpg binary
+*.pdf binary
