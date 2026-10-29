@@ -1,14 +1,16 @@
-# 本机配置（含服务器地址、姓名、本机 Python 路径），不要提交
-config.json
-python路径.txt
+# === 本机配置与运行产物，一律不进仓库 ===
+
+# 真实配置（含内网地址、姓名、本机 Python 路径）
+**/config.json
+**/python路径.txt
 
 # 运行产物
-输出/*
-!输出/.gitkeep
+**/输出/*
+!**/输出/.gitkeep
 *.log
 
-# 我自己跑出来的临时页面（含学校内部数据）
-form_*.html
+# 临时抓下来的页面（含学校内部数据）
+**/form_*.html
 
 # Python
 __pycache__/
