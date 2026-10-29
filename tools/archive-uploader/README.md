@@ -2,11 +2,11 @@
 
 给老式 ASP 档案管理系统（南大之星之类）做**批量附件上传 + 旧文件清理**的一套小工具。
 
-> \\*\\*Batch attachment uploader for legacy ASP archive systems.\\*\\*
+> **Batch attachment uploader for legacy ASP archive systems.**
 > Many Chinese university archives still run on classic ASP systems with no API —
 > every file must be uploaded and the old one deleted by hand, one record at a time.
 > This tool turns a 238-record job into `export → match → dry-run → run → audit`.
-> Pure Python standard library, \\*\\*zero dependencies\\*\\*. Chinese docs only for now.
+> Pure Python standard library, **zero dependencies**. Chinese docs only for now.
 
 校园档案馆/团委每年要往系统里补几百个文件。系统只提供"一条记录 → 点上传 → 选文件 → 填题名 → 上传 → 再删掉旧文件"的网页操作，几百条就是几百遍。这套工具把这件事变成：
 
@@ -19,17 +19,33 @@
 > 实战战绩：某高校团委 238 条记录、277 个本地文件，最终 180 条按字节大小核对一致，
 > 0 条错位、0 条重复、0 条残留旧附件。
 
+
+<p align="center">
+  <img src="docs/01-菜单.png" width="640" alt="菜单"><br>
+  <sub>双击 <code>开始.bat</code> 就有菜单，不用敲任何命令</sub>
+</p>
+
+| 配对表（`upload_plan.csv`） | 全库体检 |
+|---|---|
+| ![配对表](docs/02-配对表.png) | ![体检](docs/03-体检.png) |
+| 按真实数据渲染：哪条能自动传、哪条要人看 | 逐条按字节核对，给出六类结论 |
+
+<p align="center">
+  <img src="docs/04-系统.png" width="720" alt="目标系统"><br>
+  <sub>目标系统就是这种老式 ASP 页面：一条记录一张附件表，只能手点</sub>
+</p>
+
 ---
 
 ## ⚠️ 使用前必读
 
-> \\*\\*本工具仅用于提高办公效率。使用者需自行保证上传文件的准确性、合法性，
-> 并确认自己对目标系统有操作授权。\\*\\*
+> **本工具仅用于提高办公效率。使用者需自行保证上传文件的准确性、合法性，
+> 并确认自己对目标系统有操作授权。**
 >
-> 因使用本脚本导致的\\*\\*数据丢失、系统异常、违规操作或由此引发的任何纠纷，
-> 作者及贡献者不承担任何责任\\*\\*。
+> 因使用本脚本导致的**数据丢失、系统异常、违规操作或由此引发的任何纠纷，
+> 作者及贡献者不承担任何责任**。
 >
-> 脚本会\\*\\*真实写入\\*\\*目标系统（上传附件、删除附件），且\\*\\*不可撤销\\*\\*。
+> 脚本会**真实写入**目标系统（上传附件、删除附件），且**不可撤销**。
 > 请务必先备份、先演练、先单条验收，再全量执行。
 > 涉密文件请勿上传——系统页面上通常就写着那几个红字。
 
@@ -64,8 +80,8 @@
 2. 双击安装，**第一屏务必勾选 `Add python.exe to PATH`**（这一项不勾，后面一定报错）
 3. 再点 `Install Now`，等它装完
 
-> 本项目\\*\\*不需要\\*\\* `pip install` 任何东西——所有功能只用 Python 自带的库。
-> 你也\\*\\*不需要\\*\\*装 Git、Node.js、Visual Studio 之类的东西。
+> 本项目**不需要** `pip install` 任何东西——所有功能只用 Python 自带的库。
+> 你也**不需要**装 Git、Node.js、Visual Studio 之类的东西。
 
 ### 第 2 步：验证装好了
 
@@ -112,9 +128,9 @@ python --version
 
 |报错|原因|怎么办|
 |-|-|-|
-|`连接超时` / `WinError 10060`|没连内网 / VPN|先连校园网，跑菜单 `\\[1]` 自检|
+|`连接超时` / `WinError 10060`|没连内网 / VPN|先连校园网，跑菜单 `[1]` 自检|
 |`会话失效（跳到登录页）`|cookie 过期了|回浏览器重新取一次 cookie|
-|`❌ 页面结构和预期不符`|系统模板不一样|跑菜单 `\\[7]` 把页面存下来，找人适配|
+|`❌ 页面结构和预期不符`|系统模板不一样|跑菜单 `[7]` 把页面存下来，找人适配|
 
 ---
 
@@ -173,8 +189,8 @@ python --version
   "me": "刘笑成",
   "id_base": 0,
   "record_total": 238,
-  "exclude_dirs": \\["学代会照片"],
-  "stop_words": \\["某某大学"]
+  "exclude_dirs": ["学代会照片"],
+  "stop_words": ["某某大学"]
 }
 ```
 
@@ -327,7 +343,7 @@ python scripts/3_上传.py --cookie "..." --reconcile --commit # 确认后执行
 
 > 最后一条是最贵的教训：`上传者 = 我` 不等于 `文件 = 我要的那份`。
 > 这套工具最早按"上传者"判断处理状态，跑完全绿，抽查一条才发现大小不对——旧版本的 PDF 还挂在那儿。
-> 现在唯一可靠的判据是：\\*\\*线上附件大小 == 本地文件大小\\*\\*。抓不到大小就别下结论。
+> 现在唯一可靠的判据是：**线上附件大小 == 本地文件大小**。抓不到大小就别下结论。
 
 ---
 
@@ -383,7 +399,7 @@ ASP 会话一般 20 分钟无操作就失效。失效时脚本会打印"会话�
 换个模板的系统，`find_attachments()` 要重写——但 `--audit` 会先把"解析到 0 个附件"暴露出来。
 2. **删旧附件是"一条记录保留一个附件"的假设**。如果你的业务允许一条记录挂多个不同文件，
 `--reconcile` 会误删——这种情况请加 `--no-delete`，只传不删。
-3. **单线程、串行**。238 条约 5\~8 分钟。为了不把老服务器打垮，这是故意的；有 `--sleep` 可调。
+3. **单线程、串行**。238 条约 5~8 分钟。为了不把老服务器打垮，这是故意的；有 `--sleep` 可调。
 4. **cookie 要手工取**，没有自动登录。ASP 会话约 20 分钟无操作失效，脚本会停下而不是死循环。
 5. **不能撤销**。上传和删除都是真实写入，系统没有事务、没有回收站。
 6. **配对靠题名相似度，不是语义理解**。同名、同题不同文、题名与文件名完全无关的，
@@ -401,7 +417,7 @@ ASP 会话一般 20 分钟无操作就失效。失效时脚本会打印"会话�
 提交前请确认：
 
 ```bash
-python -m py_compile scripts/\\*.py
+python -m py_compile scripts/*.py
 node --check scripts/1_导出服务器清单.js
 ```
 
@@ -415,7 +431,7 @@ node --check scripts/1_导出服务器清单.js
 
 * 首次发布：导出清单、题名配对、演练/单条/全量上传、断点续传、重复附件清理、全库体检、对账修正
 * 判据从"上传者"改为"文件大小"（含 MB 显示精度补偿）
-* Windows 双击菜单（`开始.bat`，1\~10）
+* Windows 双击菜单（`开始.bat`，1~10）
 
 ---
 
@@ -446,7 +462,7 @@ node --check scripts/1_导出服务器清单.js
 * 代码由 **DeepSeek Harness** 生成，需求、业务规则、判断依据和每一次"这里不对"都由使用者提出。
 * 感谢所有在 issue 里补充"我踩到的坑"的人。
 
-> \\*Code generated with DeepSeek Harness, prompted by 廖晋华.\\*
+> *Code generated with DeepSeek Harness, prompted by 廖晋华.*
 
 ## 许可
 
