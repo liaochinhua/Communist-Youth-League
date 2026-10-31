@@ -16,12 +16,13 @@ from openpyxl.styles import Font, Alignment, PatternFill, Border, Side
 from openpyxl.utils import get_column_letter
 
 import conf
+import roster
 
 BASE = conf.BASE
 AREA = conf.area_file()          # 首次运行会自动下载行政区划数据
 OUT_DIR = conf.OUT_DIR
 SRC = conf.roster_file()
-COLLEGES = conf.COLLEGES
+COLLEGES = conf.COLLEGES      # 空 = 花名册里有哪些学院就核哪些
 
 HEAD = ["学院", "学号", "专业班级", "姓名", "籍贯", "性别",
         "出生年月", "入团时间", "入团地点", "备注", "问题类型", "核查说明"]
@@ -137,9 +138,22 @@ def check_jiguan(v):
 
 
 def check_date(v, label):
+    """时间格式：默认只认 2005.7；config 里 date_style=cn 时认 2005年07月"""
     s = "" if v is None else str(v).strip()
     if not s:
         return False, f"{label}为空"
+
+    if getattr(conf, "DATE_STYLE", "dot") == "cn":
+        m = re.fullmatch(r"(\d{4})年(\d{1,2})月", s)
+        if m:
+            mo = int(m.group(2))
+            return (True, "") if 1 <= mo <= 12 else (False, f"{label}月份不合法（{mo}）")
+        if re.fullmatch(r"\d{4}年\d{1,2}月\d{1,2}日", s):
+            return False, f"{label}多写了日，只写到月"
+        if re.fullmatch(r"\d{4}", s):
+            return False, f"{label}只写到年，缺月份"
+        return False, f"{label}格式不对（应为 2005年7月 这种）"
+
     if re.fullmatch(r"\d{4}\.\d{1,2}", s):
         m = int(s.split(".")[1])
         return (True, "") if 1 <= m <= 12 else (False, f"{label}月份不合法（{m}）")
@@ -151,52 +165,48 @@ def check_date(v, label):
 
 
 def read_sections(path):
-    wb = openpyxl.load_workbook(path, data_only=True, read_only=True)
-    ws = wb.active
-    sections, cur, buf = {}, None, []
-    for row in ws.iter_rows(min_row=1, values_only=True):
-        a = row[0]
-        rest = [c for c in row[1:] if c not in (None, "")]
-        if a not in (None, "") and not rest:
-            if cur:
-                sections[cur] = buf
-            name = str(a).strip()
-            cur = None if name.startswith("合计") else name
-            buf = []
-            continue
-        if cur and row[3] and str(a).strip() != "序号":
-            buf.append(list(row[:10]))
-    if cur:
-        sections[cur] = buf
-    return sections
+    """花名册读取：兼容「分段大表」和「单学院表」，具体交给 roster.py"""
+    import roster
+    _, secs = roster.load(path, conf.SINGLE_COLLEGE, conf.DATE_STYLE)
+    return secs
 
 
 def main():
     sections = read_sections(SRC)
+    cols = COLLEGES or [c for c in sections if sections[c]]
     issues, class_stat = [], collections.Counter()
 
     # 两个学院一起建索引，才能抓到「同一人同时在两个学院」的情况
     by_id = collections.defaultdict(list)
-    for col in COLLEGES:
+    for col in cols:
         for r in sections.get(col, []):
             by_id[str(r[1]).strip()].append(r)
 
-    for col in COLLEGES:
+    for col in cols:
         rows = sections.get(col, [])
 
         for r in rows:
+            # 写了情况注明、或被标黄的行：团委已经知道，整行不做问题汇总
+            if roster.skip_row(r):
+                continue
             types, notes = [], []
+            note10 = r[10] if len(r) > 10 else ""      # 「情况注明」列
+
+            def skip(label, _n=note10):
+                """情况注明里已经说明过的，不算问题"""
+                return roster.explained(_n, label)
+
             ok, why = check_jiguan(r[4])
-            if not ok:
+            if not ok and not skip("籍贯有误"):
                 types.append("籍贯有误")
                 notes.append(why)
             for idx, label in ((6, "出生年月"), (7, "入团时间")):
                 ok, why = check_date(r[idx], label)
-                if not ok:
+                if not ok and not skip("时间格式错误"):
                     types.append("时间格式错误")
                     notes.append(why)
             # 备注：只查空，不查内容（预备党员/中共党员都是正常的）
-            if not str(r[9] or "").strip():
+            if not str(r[9] or "").strip() and not skip("备注为空"):
                 types.append("备注为空")
                 notes.append("备注没填（应填共青团员/预备党员/中共党员）")
 
@@ -265,7 +275,7 @@ def main():
     wb.save(path)
 
     print(f"源文件: {os.path.basename(SRC)}")
-    for col in COLLEGES:
+    for col in cols:
         print(f"\n{col}  {len(sections.get(col, []))} 人  问题 {sum(1 for i in issues if i[0] == col)} 条")
     print("\n按类型：")
     for t, n in collections.Counter(i[2] for i in issues).most_common():

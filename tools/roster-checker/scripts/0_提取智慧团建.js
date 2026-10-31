@@ -18,7 +18,13 @@
 
 (async () => {
   const KEY = 'zhtj_members_v1';        // localStorage 里的暂存键
-  const FILTER = /2026/;                // 只抓名字里带 2026 的团支部
+
+  // ★ 每年只需要改这一行 ★
+  // 只抓新生：['2027']
+  // 连老团员一起抓：['2023','2024','2025','2026']
+  const YEARS = ['2026'];
+  const FILTER = new RegExp('(' + YEARS.join('|') + ')级');
+
   const sleep = ms => new Promise(r => setTimeout(r, ms));
   const store = JSON.parse(localStorage.getItem(KEY) || '{}');
   const log = (...a) => console.log('[抓取]', ...a);
