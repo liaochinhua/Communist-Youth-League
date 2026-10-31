@@ -30,6 +30,11 @@ thin = Side(style="thin", color="D9D9D9")
 BOX = Border(left=thin, right=thin, top=thin, bottom=thin)
 
 
+COLS = R.COLS                                              # 花名册里实际出现的学院
+CLS2COL = {str(r[2]).strip(): col
+           for col in COLS for r in R.SECTIONS.get(col, [])}
+
+
 def head(ws, cols, color="C00000"):
     for j, h in enumerate(cols, 1):
         c = ws.cell(1, j, h)
@@ -48,9 +53,10 @@ def widths(ws, ws_list):
 # ---------- 数据 ----------
 sections = R.read_sections(R.SRC)
 sys_by_org = collections.defaultdict(set)
-with open(R.SYS_CSV, encoding="utf-8-sig") as f:
-    for r in csv.DictReader(f):
-        sys_by_org[r["团支部"].strip()].add(r["姓名"].strip())
+if R.SYS_CSV:                       # 没配系统导出时，系统内人数一律算 0
+    with open(R.SYS_CSV, encoding="utf-8-sig") as f:
+        for r in csv.DictReader(f):
+            sys_by_org[r["团支部"].strip()].add(r["姓名"].strip())
 
 # 每个班的问题数（来自已有的两张明细表）
 def read_issues(path):
@@ -63,21 +69,31 @@ rows_b = read_issues(os.path.join(OUT, "对账结果.xlsx"))
 
 stat = {}
 for cls, org in R.MAPPING.items():
-    col = "机械学院" if cls.startswith(("机械", "智能制造")) else "人工智能学院"
+    col = CLS2COL.get(cls, "")      # 学院来自花名册的分段，不靠名字猜
     rows_cls = [r for r in sections[col] if str(r[2]).strip() == cls]
-    roster = {str(r[3]).strip() for r in rows_cls}
+    roster_all = {str(r[3]).strip() for r in rows_cls}
+    # 标黄/写了情况注明的人算在花名册人数里，但不参与「系统里没有」的统计
+    roster = {str(r[3]).strip() for r in rows_cls if not R.NM_R.skip_row(r)}
     if org:
         sysn = sys_by_org.get(org, set())
     else:
         sysn = set(R.GHOST.get(cls, []))
     stat[cls] = {
         "学院": col,
-        "花名册": len(roster),   # 按姓名去重（张三在表里有两行）
+        "花名册": len(roster_all),   # 按姓名去重（张三在表里有两行）
         "系统": len(sysn),
         "系统无": len(roster - sysn),
         "系统多": len(sysn - roster),
         "缺姓名": "、".join(sorted(roster - sysn)),
     }
+
+# 没提供系统名单时，系统相关列留空，别写成"缺 503 人"这种误导数字
+if not R.SYS_CSV:
+    for v in stat.values():
+        v["系统"] = ""
+        v["系统无"] = 0
+        v["系统多"] = 0
+        v["缺姓名"] = ""
 
 # 各问题按班级计数
 for r in rows_a + rows_b:
@@ -99,12 +115,12 @@ ws.title = "按学院"
 head(ws, ["学院", "花名册人数", "系统内人数", "系统里没有", "系统里多出", "差额",
           "其他问题", "问题合计"], "1F4E79")
 tot = collections.Counter()
-for col in ("机械学院", "人工智能学院"):
+for col in COLS:
     ss = [v for k, v in stat.items() if v["学院"] == col]
     roster = sum(v["花名册"] for v in ss)
-    sysn = sum(v["系统"] for v in ss)
-    miss = sum(v["系统无"] for v in ss)
-    extra = sum(v["系统多"] for v in ss)
+    sysn = sum(int(v["系统"] or 0) for v in ss)
+    miss = sum(int(v["系统无"] or 0) for v in ss)
+    extra = sum(int(v["系统多"] or 0) for v in ss)
     other = sum(v.get(k, 0) for v in ss for k in ("班级不符", "学号重复", "出现两次", "备注为空"))
     ws.append([col, roster, sysn, miss, extra, roster - sysn, other, miss + extra + other])
     tot.update({"r": roster, "s": sysn, "m": miss, "e": extra, "o": other})
@@ -120,7 +136,7 @@ ws.cell(r0, 1, "注：花名册人数按姓名去重（张三在表里出现两�
 ws2 = wb.create_sheet("按班级")
 head(ws2, ["学院", "专业班级", "花名册人数", "系统内人数", "系统里没有", "缺失人员名单",
            "系统里多出", "班级不符", "学号重复", "出现两次", "备注为空", "需处理人数"])
-for cls, v in sorted(stat.items(), key=lambda x: (0 if x[1]["学院"] == "机械学院" else 1, x[0])):
+for cls, v in sorted(stat.items(), key=lambda x: (COLS.index(x[1]["学院"]) if x[1]["学院"] in COLS else 99, x[0])):
     need = v["系统无"] + v.get("班级不符", 0) + v.get("学号重复", 0) + v.get("出现两次", 0) + v.get("备注为空", 0)
     ws2.append([v["学院"], cls, v["花名册"], v["系统"], v["系统无"], v["缺姓名"],
                 v["系统多"], v.get("班级不符", 0), v.get("学号重复", 0),
@@ -183,7 +199,7 @@ for p in people.values():
         text = "，".join(rest)
     rows3.append([p["学院"], p["班级"], p["姓名"], p["学号"], text])
 
-rows3.sort(key=lambda x: (0 if str(x[0]) == "机械学院" else 1, str(x[1]), str(x[2])))
+rows3.sort(key=lambda x: (COLS.index(x[0]) if x[0] in COLS else 99, str(x[1]), str(x[2])))
 for row in rows3:
     ws3.append(row)
 widths(ws3, [12, 26, 12, 16, 56])
