@@ -1,6 +1,6 @@
 # 团委工作小工具集
 
-> 个人开发的、给学校团委日常事务用的小工具集合。**非官方项目**，与中国共产主义青年团等任何组织无关。
+> 个人开发的、给学校团委日常事务用的小工具集合。**非官方项目**，与大鱼等任何组织无关。
 > 每个工具都是独立的文件夹，可以单独拿走用，也可以拿去改。
 
 做这些东西的起因很朴素：团委每年要往老系统里补几百个文件、整理几百份材料，
@@ -13,6 +13,7 @@
 | 工具 | 用途 | 入口 | 依赖 |
 |---|---|---|---|
 | [archive-uploader](tools/archive-uploader/) | 老式 ASP 档案系统的批量附件上传：题名配对、演练/断点续传、按文件大小对账体检、自动清理旧附件 | `tools/archive-uploader/开始.bat` | Python 3.8+，零第三方库 |
+| [roster-checker](tools/roster-checker/) | 团员花名册核查：籍贯/时间格式校验、与智慧团建系统对账、缺失与班级不符排查、按学院出清单 | `tools/roster-checker/开始.bat` | Python 3.8+，`openpyxl` |
 
 > 每个工具目录里都有自己的 `README.md`，写清了怎么配、怎么跑、踩过哪些坑。
 
@@ -26,14 +27,22 @@
 ├─ LICENSE
 ├─ .gitignore / .gitattributes
 └─ tools/
-   └─ archive-uploader/      ← 一个工具一个文件夹
-      ├─ README.md           ← 这个工具自己的说明（详细版）
-      ├─ DeepSeek.md         ← 它是怎么被做出来的（过程记录）
-      ├─ 开始.bat            ← 双击就能用的入口
-      ├─ config.example.json ← 配置模板，复制成 config.json 再改
+   ├─ archive-uploader/      ← 一个工具一个文件夹
+   │  ├─ README.md           ← 这个工具自己的说明（详细版）
+   │  ├─ DeepSeek.md         ← 它是怎么被做出来的（过程记录）
+   │  ├─ 开始.bat            ← 双击就能用的入口
+   │  ├─ config.example.json ← 配置模板，复制成 config.json 再改
+   │  ├─ scripts/            ← 代码
+   │  ├─ docs/               ← 截图
+   │  └─ 样例/               ← 可以先跑通流程的样例数据
+   └─ roster-checker/
+      ├─ README.md
+      ├─ DeepSeek.md
+      ├─ 开始.bat
+      ├─ config.example.json
+      ├─ data/               ← 可编辑的对照表（专业简称）
       ├─ scripts/            ← 代码
-      ├─ docs/               ← 截图
-      └─ 样例/               ← 可以先跑通流程的样例数据
+      └─ 输出/               ← 运行产物，不进仓库
 ```
 
 **根目录只放仓库级的东西**（索引、协议、忽略规则）。具体工具的代码、配置、文档全部收在
