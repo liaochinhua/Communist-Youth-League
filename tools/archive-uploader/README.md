@@ -207,12 +207,12 @@ python --version
 
 ### 1\. 导出服务器清单（浏览器里，只读）
 
-登录系统，打开记录列表页 → `F12` → 控制台 → 粘贴 `scripts/1_导出服务器清单.js` → 回车。
+登录系统，打开记录列表页 → `F12` → Console/控制台 → 粘贴 `scripts/1_导出服务器清单.js` → 回车。
 
 脚本会自动翻页，最后下载 `records.csv`（序号 / 档号 / 题名 / 文件id / 全文数）。
 
 > 翻页翻不动没关系：手动点"下一页"再跑一次，结果存在浏览器里自动合并，不重复不覆盖。
-> 想清空重来：控制台里执行 `清空导出()`。
+> 想清空重来：Console/控制台里执行 `清空导出()`。
 
 把 `records.csv` 放进 `输出/`。
 
@@ -256,7 +256,7 @@ python scripts/3_上传.py --cookie "..." --limit 1 --commit
 python scripts/3_上传.py --cookie "..." --commit
 ```
 
-`cookie` 在浏览器控制台执行 `document.cookie` 打印，整串复制。
+`cookie` 在浏览器 Console/控制台执行 `document.cookie` 打印，整串复制。
 
 Windows 用户可以直接双击 `开始.bat`，菜单操作，不用记命令：
 
