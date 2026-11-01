@@ -11,10 +11,9 @@ import conf
 BASE = conf.BASE
 OUT = conf.OUT_DIR
 
-SCHOOLS = {
-    "机械学院": ("机械学院", "机械工程与智能制造学院"),
-    "数据学院": ("人工智能学院", "计算机与人工智能学院（原数据学院）"),
-}
+# 学院清单：直接用人数统计表里出现过的学院，不再写死
+# 想给学院起个全称，就在 config.json 的 college_names 里配：
+#   "college_names": {"人工智能学院": "计算机与人工智能学院"}
 
 thin = Side(style="thin", color="D9D9D9")
 BOX = Border(left=thin, right=thin, top=thin, bottom=thin)
@@ -57,7 +56,10 @@ s_issue = [list(r) for r in src["问题清单"].iter_rows(min_row=2, values_only
 err = openpyxl.load_workbook(os.path.join(OUT, "团员花名册有误名单.xlsx"))
 s_err = [list(r) for r in err["有误名单"].iter_rows(min_row=2, values_only=True)]
 
-for fname, (key, full) in SCHOOLS.items():
+ALL_COLLEGES = list(dict.fromkeys(str(r[0]).strip() for r in s_class if r and r[0]))
+for key in ALL_COLLEGES:
+    fname = conf.COLLEGE_ALIAS.get(key, key)
+    full = conf.COLLEGE_NAMES.get(key, key)
     cls_rows = [r for r in s_class if str(r[0]).strip() == key]
     iss_rows = [r for r in s_issue if str(r[0]).strip() == key]
     err_rows = [r for r in s_err if str(r[0]).strip() == key]
@@ -95,9 +97,17 @@ for fname, (key, full) in SCHOOLS.items():
          [14, 26, 10, 24, 6, 11, 11, 28, 10, 44])
     ws3.freeze_panes = "A3"
 
-    path = os.path.join(OUT, f"{fname}-2026级团员核查.xlsx")
+    path = os.path.join(OUT, f"{fname}-{conf.GRADE}团员核查.xlsx")
     wb.save(path)
+
+    # 另存一份纯姓名清单，可直接粘进 9_全局搜索核对.js 的 RAW
+    # 问题清单的列：0 学院 / 1 专业班级 / 2 姓名 / 3 学号 / 4 问题说明
+    miss = [str(r[2]) for r in iss_rows if "智慧团建无" in str(r[4])]
+    txt = os.path.join(OUT, f"{fname}-缺失名单.txt")
+    with open(txt, "w", encoding="utf-8") as f:
+        f.write("\n".join(dict.fromkeys(miss)))
     print(f"{fname}: {len(cls_rows)} 班 / 缺 {sum(int(r[4] or 0) for r in cls_rows)} 人 / "
-          f"问题 {len(iss_rows)} 条 / 名单 {len(err_rows)} 行 -> {os.path.basename(path)}")
+          f"问题 {len(iss_rows)} 条 / 名单 {len(err_rows)} 行 -> {os.path.basename(path)}"
+          f"（缺失名单 {len(miss)} 个名字另存为 txt）")
 
 print("\n输出目录:", OUT)
