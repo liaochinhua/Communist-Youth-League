@@ -1,8 +1,17 @@
 # 统一行尾，避免 Windows 上 .bat 被转成 LF 后跑不起来
 * text=auto eol=lf
-*.bat text eol=crlf
+
+# Windows 批处理必须是 CRLF，否则 cmd 解析 goto / 多行括号会错乱，
+# 表现为「窗口闪一下就没了」。
+#
+# 这里用 -text（当二进制、原样存储），而不是 text eol=crlf：
+#   text eol=crlf 会在提交时把 CRLF 归一化成 LF 存进仓库，
+#   而 GitHub 的「Download ZIP」给的是仓库里的原始字节 →
+#   下载回来就是 LF 的 bat，双击跑不起来。
+#   -text 则完全不碰这些文件，上传什么样、下载回来就什么样。
+*.bat -text
+*.cmd -text
 *.ps1 text eol=crlf
-*.cmd text eol=crlf
 
 # 二进制
 *.png binary
