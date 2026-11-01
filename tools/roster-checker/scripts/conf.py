@@ -25,7 +25,30 @@ def _load():
 
 C = _load()
 OUT_DIR = os.path.join(BASE, C.get("output_dir") or "输出")
-COLLEGES = C.get("colleges") or []
+COLLEGES = C.get("colleges") or []          # 空 = 花名册里有几个学院就核几个
+
+# 单学院表（表头在第 1 行、没有分段）时，整张表算哪个学院
+SINGLE_COLLEGE = C.get("single_college") or "未命名学院"
+
+# 时间格式规范：dot = 2005.7（2026级用这个）；cn = 2005年07月（老花名册常见）
+DATE_STYLE = C.get("date_style") or "dot"
+
+# 智慧团建抓取时按团支部名过滤，如 "2026" 或 "2023|2024"
+BRANCH_FILTER = C.get("branch_filter") or ""
+
+# 学院简称 -> 全称，用于输出的标题
+COLLEGE_NAMES = C.get("college_names") or {}
+
+# 输出文件名里用的学院名（花名册叫"人工智能学院"，大家习惯叫"数据学院"）
+COLLEGE_ALIAS = C.get("college_aliases") or {}
+
+# 年级，用在输出文件名里
+GRADE = C.get("grade") or ""
+
+# 籍贯是否严格到「不能带省/市字」：浙江丽水 ✅  浙江省丽水市 ❌
+# 默认关闭。有的团委口径是「带省市区划字算有误」，但实测 34% 的人都这么写，
+# 属共性问题，逐人列出来没有意义，所以默认不报。
+JIGUAN_STRICT = C.get("jiguan_strict", False)
 
 # 幽灵支部：系统组织树里能点、列表页却不显示的支部，成员名单只能人工抄
 # 放在 config.json 的 ghost_branches 里，形如 {"智能制造工程264": ["姓名1", "姓名2"]}

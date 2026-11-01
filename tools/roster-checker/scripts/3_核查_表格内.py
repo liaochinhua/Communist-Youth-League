@@ -84,6 +84,16 @@ ADB = Area(AREA)
 
 
 def check_jiguan(v):
+    """籍贯判定；config 里 jiguan_strict=true 时，连“省/市”字也不许出现"""
+    ok, why = _check_jiguan(v)
+    if ok and getattr(conf, "JIGUAN_STRICT", False):
+        raw = re.sub(r"\s+", "", str(v or ""))
+        if "省" in raw or "市" in raw:
+            return False, "多了“省/市”字，应写“浙江丽水”这种"
+    return ok, why
+
+
+def _check_jiguan(v):
     s = re.sub(r"\s+", "", str(v or ""))
     if not s:
         return False, "籍贯为空"
