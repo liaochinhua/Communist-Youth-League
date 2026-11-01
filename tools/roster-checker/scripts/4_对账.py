@@ -26,8 +26,8 @@ import conf
 BASE = conf.BASE
 OUT_DIR = conf.OUT_DIR
 SRC = conf.roster_file()
-SYS_CSV = conf.sys_csv()
-COLLEGES = conf.COLLEGES
+SYS_CSV = conf.sys_csv() if conf.C.get("sys_csv") else None
+COLLEGES = conf.COLLEGES      # 空 = 花名册里有哪些学院就核哪些
 
 # 花名册班级 -> 智慧团建团支部：由 scripts/namemap.py 按「专业简称+班号」自动配对
 # （简称表在 data/专业简称.csv，可编辑；新增专业时改那张表即可）
@@ -43,35 +43,27 @@ HEAD = ["学院", "学号", "专业班级", "姓名", "籍贯", "性别", "出�
 
 
 def read_sections(path):
-    wb = openpyxl.load_workbook(path, data_only=True, read_only=True)
-    ws = wb.active
-    secs, cur, buf = {}, None, []
-    for row in ws.iter_rows(min_row=1, values_only=True):
-        a, rest = row[0], [c for c in row[1:] if c not in (None, "")]
-        if a not in (None, "") and not rest:
-            if cur:
-                secs[cur] = buf
-            name = str(a).strip()
-            cur = None if name.startswith("合计") else name
-            buf = []
-            continue
-        if cur and row[3] and str(a).strip() != "序号":
-            buf.append(list(row[:10]))
-    if cur:
-        secs[cur] = buf
+    """花名册读取：兼容「分段大表」和「单学院表」"""
+    import roster
+    _, secs = roster.load(path, conf.SINGLE_COLLEGE, conf.DATE_STYLE)
     return secs
 
 
 # ---------- 模块级：读数据 + 自动配对（供 5/6 号脚本复用） ----------
+import roster as NM_R
+
 _nm = importlib.util.spec_from_file_location("nm", os.path.join(BASE, "scripts", "namemap.py"))
 NM = importlib.util.module_from_spec(_nm)
 _nm.loader.exec_module(NM)
 
 SECTIONS = read_sections(SRC)
+COLS = COLLEGES or [c for c in SECTIONS if SECTIONS[c]]
 
 
 def _load_sys():
     by_org = collections.defaultdict(dict)
+    if not SYS_CSV:                 # 没配系统导出：跳过对账，只做表格内核查
+        return by_org
     with open(SYS_CSV, encoding="utf-8-sig") as f:
         for r in csv.DictReader(f):
             by_org[r["团支部"].strip()][r["姓名"].strip()] = r
@@ -80,7 +72,7 @@ def _load_sys():
 
 SYS_BY_ORG = _load_sys()
 CLASSES = list(dict.fromkeys(
-    str(r[2]).strip() for c in COLLEGES for r in SECTIONS.get(c, [])))
+    str(r[2]).strip() for c in COLS for r in SECTIONS.get(c, [])))
 MAPPING, UNMATCHED, EXTRA_ORGS = NM.auto_map(CLASSES, list(SYS_BY_ORG))
 for _c in GHOST:                       # 幽灵支部：系统里查不到，用人工抄的名单
     MAPPING.setdefault(_c, None)
@@ -94,7 +86,7 @@ def main():
     # 花名册索引
     roster = collections.defaultdict(list)          # 班级 -> [行]
     name_index = collections.defaultdict(list)      # 姓名 -> [(学院,行)]
-    for col in COLLEGES:
+    for col in COLS:
         for r in secs.get(col, []):
             roster[str(r[2]).strip()].append((col, r))
             name_index[str(r[3]).strip()].append((col, r))
@@ -108,8 +100,8 @@ def main():
     mm = collections.defaultdict(lambda: {"表格": set(), "系统": set(), "col": ""})
 
     # ---------- 逐班对账 ----------
-    for cls, org in MAPPING.items():
-        col = next((c for c in COLLEGES if cls in {str(r[2]).strip() for _, r in roster[cls]}), "")
+    for cls, org in (MAPPING.items() if sys_by_org else []):
+        col = next((c for c in COLS if cls in {str(r[2]).strip() for _, r in roster[cls]}), "")
 
         if org is None:
             # 幽灵支部：系统组织树里能点进去，但列表页不显示（系统 bug），

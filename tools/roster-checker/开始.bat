@@ -1,116 +1,85 @@
 @echo off
-chcp 65001 >nul
-setlocal enabledelayedexpansion
+chcp 65001 >nul 2>nul
+rem ==========================================================================
+rem  Launcher for roster-checker.
+rem
+rem  IMPORTANT: keep this file ASCII-only - both the text and every path it
+rem  mentions. cmd.exe decodes batch files with the active code page; a
+rem  UTF-8 .bat containing Chinese breaks at random, because the read buffer
+rem  can split a multi-byte character and that line becomes a bogus command
+rem  ("'xx' is not recognized as an internal or external command").
+rem  All Chinese output lives in scripts\menu.py.
+rem ==========================================================================
+
+setlocal
 cd /d "%~dp0"
+set "PY="
 
-rem ---- 找 Python ----
-set PY=
-if exist "python路径.txt" set /p PY=<python路径.txt
-if defined PY if not exist "!PY!" set PY=
-if not defined PY (
-  where python >nul 2>nul && set PY=python
-)
-if not defined PY (
-  where py >nul 2>nul && set PY=py
-)
-if not defined PY (
-  echo 没找到 Python，请先安装 Python 3.8+ 并勾选 "Add to PATH"
-  pause & exit /b 1
+rem ---- 1. explicit path from python-path.txt, if the user made one ----
+if exist "python-path.txt" (
+  set /p PY=<python-path.txt
+  if defined PY call :verify "%PY%"
+  if errorlevel 1 set "PY="
 )
 
-:menu
+rem ---- 2. the py launcher ----
+if not defined PY (
+  where py >nul 2>nul && set "PY=py"
+)
+
+rem ---- 3. python.exe, skipping the 0-byte Microsoft Store stub ----
+if not defined PY call :find_python
+
+if not defined PY goto nopython
+
+"%PY%" "scripts\menu.py"
+if errorlevel 1 pause
+exit /b 0
+
+:nopython
 cls
 echo ============================================================
-echo    团员花名册核查工具
+echo   Python not found
 echo ============================================================
 echo.
-echo   1  运行前检查（配置、文件、依赖）
-echo   2  读表检查（确认脚本看懂你的表）
-echo   3  生成 / 更新专业简称表
-echo   4  核查表格自身问题（籍贯、时间格式、备注、重复）
-echo   5  与智慧团建对账（缺失、班级不符）
-echo   6  出名单（提交版 + 复核版）
-echo   7  人数统计（按学院 / 按班级 / 缺失名单）
-echo   8  按学院拆分（发给学院负责人）
-echo   9  一键全跑（4 -^> 5 -^> 6 -^> 7 -^> 8）
+echo   This tool needs Python 3.8 or newer.
 echo.
-echo   0  退出
+echo   1. Download from https://www.python.org/downloads/
+echo      Tick "Add python.exe to PATH" during installation.
+echo   2. Close this window and double-click the launcher again.
 echo.
-set /p CH=请输入编号:
+echo   If Python is already installed but you still see this:
+echo      put the full path of python.exe into python-path.txt
+echo      in this folder, one line, e.g.  C:\Python312\python.exe
+echo.
+pause
+exit /b 1
 
-if "%CH%"=="1" goto check
-if "%CH%"=="2" goto readcheck
-if "%CH%"=="3" goto short
-if "%CH%"=="4" goto step3
-if "%CH%"=="5" goto step4
-if "%CH%"=="6" goto step5
-if "%CH%"=="7" goto step6
-if "%CH%"=="8" goto step7
-if "%CH%"=="9" goto all
-if "%CH%"=="0" exit /b 0
-goto menu
+rem ==========================================================================
+rem  helpers
+rem ==========================================================================
 
-:check
-cls
-if not exist "config.json" (
-  echo [!] 没有 config.json
-  echo     请把 config.example.json 复制一份，改名为 config.json，再填路径。
-  echo.
-  pause & goto menu
-)
-%PY% -c "import openpyxl" 2>nul
+:verify
+rem Check that a python command actually runs. %~1 may be "py" or a full path.
+setlocal
+"%~1" -c "import sys" >nul 2>nul
 if errorlevel 1 (
-  echo [!] 缺少 openpyxl，正在安装...
-  %PY% -m pip install openpyxl
+  endlocal
+  exit /b 1
 )
-%PY% -c "import conf; print('花名册 :', conf.roster_file()); print('系统名单:', conf.sys_csv()); print('输出目录:', conf.OUT_DIR); print('核查学院:', conf.COLLEGES)"
-echo.
-pause & goto menu
+endlocal
+exit /b 0
 
-:readcheck
-%PY% "scripts\2_读表检查.py"
-echo.
-pause & goto menu
-
-:short
-%PY% "scripts\8_生成简称表.py"
-echo.
-pause & goto menu
-
-:step3
-%PY% "scripts\3_核查_表格内.py"
-echo.
-pause & goto menu
-
-:step4
-%PY% "scripts\4_对账.py"
-echo.
-pause & goto menu
-
-:step5
-%PY% "scripts\5_出总表.py"
-echo.
-pause & goto menu
-
-:step6
-%PY% "scripts\6_人数统计.py"
-echo.
-pause & goto menu
-
-:step7
-%PY% "scripts\7_分学院.py"
-echo.
-pause & goto menu
-
-:all
-%PY% "scripts\2_读表检查.py"
-%PY% "scripts\3_核查_表格内.py"
-if errorlevel 1 (echo 第3步失败 & pause & goto menu)
-%PY% "scripts\4_对账.py"
-if errorlevel 1 (echo 第4步失败 & pause & goto menu)
-%PY% "scripts\5_出总表.py"
-%PY% "scripts\6_人数统计.py"
-%PY% "scripts\7_分学院.py"
-echo.
-echo 全部完成，结果在 输出\ 目录。
-pause & goto menu
+:find_python
+rem "where python" often returns the Microsoft Store placeholder first
+rem (...\WindowsApps\python.exe), which is 0 bytes and cannot run.
+for /f "delims=" %%p in ('where python 2^>nul') do (
+  echo %%p | find /i "WindowsApps" >nul
+  if errorlevel 1 (
+    call :verify "%%p"
+    if not errorlevel 1 (
+      if not defined PY set "PY=%%p"
+    )
+  )
+)
+goto :eof

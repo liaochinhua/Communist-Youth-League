@@ -1,0 +1,140 @@
+# -*- coding: utf-8 -*-
+"""配置向导
+
+第一次用，或者路径变了，跑这个就行——不用手动编辑 config.json。
+
+技巧：提示输入路径时，可以直接把文件**从资源管理器拖进这个黑窗口**，
+路径会自动贴上，比手打快也不容易错。
+"""
+import os
+import sys
+import json
+import glob
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+BASE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+CFG = os.path.join(BASE, "config.json")
+EXAMPLE = os.path.join(BASE, "config.example.json")
+
+
+def load_existing():
+    for p in (CFG, EXAMPLE):
+        if os.path.exists(p):
+            try:
+                return json.load(open(p, encoding="utf-8-sig"))
+            except Exception:
+                pass
+    return {}
+
+
+def ask(label, default="", tip=""):
+    if tip:
+        print(f"    {tip}")
+    shown = f" [{default}]" if default else ""
+    try:
+        v = input(f"  {label}{shown}：")
+    except (EOFError, KeyboardInterrupt):
+        print()
+        raise SystemExit("\n已取消，没改动任何文件。")
+    v = v.strip().strip('"').strip("'")
+    return v or default
+
+
+def check_path(pattern, what):
+    """路径可能带通配符；返回命中的文件，找不到返回 None"""
+    if not pattern:
+        return None
+    hits = glob.glob(pattern)
+    if not hits:
+        print(f"    ⚠ 找不到 {what}：{pattern}")
+        return None
+    if len(hits) > 1:
+        hits.sort(key=os.path.getmtime, reverse=True)
+        print(f"    找到 {len(hits)} 个，取最新的：{os.path.basename(hits[0])}")
+    return hits[0]
+
+
+def main():
+    print("=" * 60)
+    print("  团员花名册核查工具 · 配置向导")
+    print("=" * 60)
+    print()
+    print("提示：输入路径时，可以直接把文件拖进这个窗口，路径会自动贴上来。")
+    print()
+
+    cfg = load_existing()
+
+    # ---------- 花名册 ----------
+    print("【1/4】花名册 Excel（各学院分段的那份大表）")
+    old = cfg.get("roster", "")
+    roster = ask("花名册路径", old)
+    while roster and not check_path(roster, "花名册"):
+        roster = ask("重新输入（直接回车跳过）", "")
+        if not roster:
+            break
+    if roster:
+        cfg["roster"] = roster
+
+    # ---------- 智慧团建导出 ----------
+    print()
+    print("【2/4】智慧团建导出的 csv（团支部,姓名,手机号,职务）")
+    print("    没有就先回车跳过——只做表格内核查，不跟系统对账")
+    old = cfg.get("sys_csv", "")
+    csvp = ask("csv 路径", old)
+    if csvp and check_path(csvp, "系统导出"):
+        cfg["sys_csv"] = csvp
+    elif csvp:
+        print("    先留空，之后有了再回来填")
+        cfg["sys_csv"] = ""
+    else:
+        cfg["sys_csv"] = ""
+
+    # ---------- 年级 ----------
+    print()
+    print("【3/4】年级（用在输出文件名里）")
+    cfg["grade"] = ask("年级", cfg.get("grade", "2026级"), "比如 2026级、2022-2026级")
+
+    # ---------- 学院 ----------
+    print()
+    print("【4/4】要核查哪些学院（花名册里怎么写的就怎么写，逗号分隔）")
+    old = cfg.get("colleges") or []
+    print(f"    当前：{'、'.join(old) if old else '（空 = 花名册里有几个就核几个）'}")
+    v = ask("学院", "")
+    if v:
+        cfg["colleges"] = [x.strip() for x in v.replace("，", ",").split(",") if x.strip()]
+
+    # ---------- 日期格式 ----------
+    print()
+    print("时间格式规范：dot = 2008.8 ；cn = 2008年08月")
+    print(f"    当前：{cfg.get('date_style', 'dot')}")
+    v = ask("用哪个（dot/cn，直接回车保持不变）", "")
+    if v in ("dot", "cn"):
+        cfg["date_style"] = v
+
+    # ---------- 写文件 ----------
+    cfg.setdefault("output_dir", "输出")
+    cfg.setdefault("ghost_branches", {})
+    with open(CFG, "w", encoding="utf-8") as f:
+        json.dump(cfg, f, ensure_ascii=False, indent=2)
+
+    print()
+    print("=" * 60)
+    print(f"已保存到：{CFG}")
+    print()
+    print("  花名册  ：", cfg.get("roster", "（未设置）"))
+    print("  系统名单：", cfg.get("sys_csv") or "（未设置，将跳过对账）")
+    print("  年级    ：", cfg.get("grade", ""))
+    print("  学院    ：", "、".join(cfg.get("colleges") or []) or "（全部）")
+    print("  时间格式：", cfg.get("date_style", "dot"))
+    print("=" * 60)
+    print()
+    print("下一步：回到菜单选「2 读表检查」，确认脚本看懂你的表。")
+    return 0
+
+
+if __name__ == "__main__":
+    try:
+        sys.exit(main())
+    except KeyboardInterrupt:
+        print("\n已取消，没改动任何文件。")
+        sys.exit(1)
