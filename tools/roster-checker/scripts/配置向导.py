@@ -65,7 +65,7 @@ def main():
     cfg = load_existing()
 
     # ---------- 花名册 ----------
-    print("【1/4】花名册 Excel（各学院分段的那份大表）")
+    print("【1/6】花名册 Excel（各学院分段的那份大表）")
     old = cfg.get("roster", "")
     roster = ask("花名册路径", old)
     while roster and not check_path(roster, "花名册"):
@@ -77,7 +77,7 @@ def main():
 
     # ---------- 智慧团建导出 ----------
     print()
-    print("【2/4】智慧团建导出的 csv（团支部,姓名,手机号,职务）")
+    print("【2/6】智慧团建导出的 csv（团支部,姓名,手机号,职务）")
     print("    没有就先回车跳过——只做表格内核查，不跟系统对账")
     old = cfg.get("sys_csv", "")
     csvp = ask("csv 路径", old)
@@ -91,12 +91,12 @@ def main():
 
     # ---------- 年级 ----------
     print()
-    print("【3/4】年级（用在输出文件名里）")
+    print("【3/6】年级（用在输出文件名里）")
     cfg["grade"] = ask("年级", cfg.get("grade", "2026级"), "比如 2026级、2022-2026级")
 
     # ---------- 学院 ----------
     print()
-    print("【4/4】要核查哪些学院（花名册里怎么写的就怎么写，逗号分隔）")
+    print("【4/6】要核查哪些学院（花名册里怎么写的就怎么写，逗号分隔）")
     old = cfg.get("colleges") or []
     print(f"    当前：{'、'.join(old) if old else '（空 = 花名册里有几个就核几个）'}")
     v = ask("学院", "")
@@ -105,11 +105,28 @@ def main():
 
     # ---------- 日期格式 ----------
     print()
-    print("时间格式规范：dot = 2008.8 ；cn = 2008年08月")
+    print("【5/6】时间格式规范")
+    print("    dot = 2008.8    cn = 2008年08月")
     print(f"    当前：{cfg.get('date_style', 'dot')}")
     v = ask("用哪个（dot/cn，直接回车保持不变）", "")
     if v in ("dot", "cn"):
         cfg["date_style"] = v
+
+    # ---------- 籍贯严格度 ----------
+    print()
+    print("【6/6】籍贯是否严格到「不许出现省、市两个字」？")
+    print()
+    print("    严格：浙江丽水 ✅   浙江省丽水市 ❌")
+    print("    宽松：浙江丽水 ✅   浙江省丽水市 ✅")
+    print()
+    print("    提示：实测 394 人里有 85 人（34%）写了省/市字。")
+    print("    多数团委把它当共性问题，不逐人报，所以默认宽松。")
+    print(f"    当前：{'严格' if cfg.get('jiguan_strict') else '宽松'}")
+    v = ask("要用严格模式吗（y/t = 严格，n/f = 宽松，回车不变）", "").lower()
+    if v in ("y", "t", "yes", "true", "是"):
+        cfg["jiguan_strict"] = True
+    elif v in ("n", "f", "no", "false", "否"):
+        cfg["jiguan_strict"] = False
 
     # ---------- 写文件 ----------
     cfg.setdefault("output_dir", "输出")
@@ -126,6 +143,7 @@ def main():
     print("  年级    ：", cfg.get("grade", ""))
     print("  学院    ：", "、".join(cfg.get("colleges") or []) or "（全部）")
     print("  时间格式：", cfg.get("date_style", "dot"))
+    print("  籍贯口径：", "严格（不许出现省/市字）" if cfg.get("jiguan_strict") else "宽松")
     print("=" * 60)
     print()
     print("下一步：回到菜单选「2 读表检查」，确认脚本看懂你的表。")
