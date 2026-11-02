@@ -65,7 +65,7 @@ def main():
     cfg = load_existing()
 
     # ---------- 花名册 ----------
-    print("【1/6】花名册 Excel（各学院分段的那份大表）")
+    print("【1/7】花名册 Excel（各学院分段的那份大表）")
     old = cfg.get("roster", "")
     roster = ask("花名册路径", old)
     while roster and not check_path(roster, "花名册"):
@@ -77,7 +77,7 @@ def main():
 
     # ---------- 智慧团建导出 ----------
     print()
-    print("【2/6】智慧团建导出的 csv（团支部,姓名,手机号,职务）")
+    print("【2/7】智慧团建导出的 csv（团支部,姓名,手机号,职务）")
     print("    没有就先回车跳过——只做表格内核查，不跟系统对账")
     old = cfg.get("sys_csv", "")
     csvp = ask("csv 路径", old)
@@ -91,12 +91,12 @@ def main():
 
     # ---------- 年级 ----------
     print()
-    print("【3/6】年级（用在输出文件名里）")
+    print("【3/7】年级（用在输出文件名里）")
     cfg["grade"] = ask("年级", cfg.get("grade", "2026级"), "比如 2026级、2022-2026级")
 
     # ---------- 学院 ----------
     print()
-    print("【4/6】要核查哪些学院")
+    print("【4/7】要核查哪些学院")
     print("    花名册里怎么写就怎么写，多个用逗号分隔")
     print("    想核全部学院：输入 all（或者 全部 / *），不用一个个列")
     old = cfg.get("colleges") or []
@@ -119,7 +119,7 @@ def main():
 
     # ---------- 日期格式 ----------
     print()
-    print("【5/6】时间格式规范")
+    print("【5/7】时间格式规范")
     print("    dot = 2008.8    cn = 2008年08月")
     print(f"    当前：{cfg.get('date_style', 'dot')}")
     v = ask("用哪个（dot/cn，直接回车保持不变）", "")
@@ -128,7 +128,7 @@ def main():
 
     # ---------- 籍贯严格度 ----------
     print()
-    print("【6/6】籍贯是否严格到「不许出现省、市两个字」？")
+    print("【6/7】籍贯是否严格到「不许出现省、市两个字」？")
     print()
     print("    严格：浙江丽水 ✅   浙江省丽水市 ❌")
     print("    宽松：浙江丽水 ✅   浙江省丽水市 ✅")
@@ -141,6 +141,18 @@ def main():
         cfg["jiguan_strict"] = True
     elif v in ("n", "f", "no", "false", "否"):
         cfg["jiguan_strict"] = False
+
+    # ---------- 整班跳过 ----------
+    print()
+    print("【7/7】有没有整班不用管的？研究生班、成教班之类")
+    print()
+    print("    花名册里没有「学历层次」这一列，脚本没法自己判断，只能你点名。")
+    print("    按名字包含匹配，写关键词即可，多个用逗号分隔。")
+    cur = cfg.get("exclude_classes") or []
+    print("    当前：" + ("、".join(cur) if cur else "（不跳过任何班）"))
+    v = ask("要跳过的班级关键词（回车保持不变）", "")
+    if v:
+        cfg["exclude_classes"] = [x.strip() for x in v.replace("，", ",").split(",") if x.strip()]
 
     # ---------- 写文件 ----------
     # 路径统一改成正斜杠：
@@ -163,6 +175,8 @@ def main():
     print("  学院    ：", "、".join(cfg.get("colleges") or []) or "（全部）")
     print("  时间格式：", cfg.get("date_style", "dot"))
     print("  籍贯口径：", "严格（不许出现省/市字）" if cfg.get("jiguan_strict") else "宽松")
+    _ex = cfg.get("exclude_classes") or []
+    print("  整班跳过：", "、".join(_ex) if _ex else "（无）")
     print("=" * 60)
     print()
     print("下一步：回到菜单选「2 读表检查」，确认脚本看懂你的表。")

@@ -82,8 +82,15 @@ def _prefix(name):
 
 
 def cls_short(cls):
-    """‘智能制造工程261’ -> ‘智造261’"""
-    s = str(cls or "").strip()
+    """‘智能制造工程261’ -> ‘智造261’
+
+    注意：有的花名册写成「材料科学与工程261班」，末尾带个"班"字。
+    必须先把"班"去掉再抓数字，否则班号会被丢掉，
+    整个专业的班全挤成同一个简称，配对就会大面积失败。
+    """
+    s = str(cls or "").strip().replace(" ", "")
+    s = re.sub(r"[（(]\s*[）)]$", "", s)     # 去掉空括号
+    s = re.sub(r"班$", "", s)               # 末尾的「班」
     m = re.match(r"(.+?)(\d+)$", s)
     if not m:
         return _prefix(s)
@@ -107,22 +114,24 @@ def org_short(org):
 def auto_map(classes, orgs):
     """花名册班级 与 系统团支部 自动配对
 
+    同一个班在花名册里可能有几种写法（多了空格、全角/半角括号、"班"字有无），
+    它们算出来的简称相同 —— 这些写法都要指向同一个支部，不能只配上一个。
+
     返回 (mapping, 花名册多出来的, 系统多出来的)
         mapping: {班级: 团支部 or None}
     """
     by_short = {}
     for o in orgs:
-        by_short.setdefault(org_short(o), []).append(o)
+        by_short[org_short(o)] = o          # 同简称的支部若重复，保留最后一个
 
     mapping, left = {}, []
     for c in classes:
         k = cls_short(c)
-        cand = by_short.get(k) or []
-        if cand:
-            mapping[c] = cand.pop(0)
-        else:
-            mapping[c] = None
+        org = by_short.get(k)
+        mapping[c] = org
+        if not org:
             left.append(c)
+
     used = {v for v in mapping.values() if v}
     extra = [o for o in orgs if o not in used]
     return mapping, left, extra

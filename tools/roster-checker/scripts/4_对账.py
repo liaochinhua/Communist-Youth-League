@@ -68,7 +68,7 @@ def _load_sys():
         return by_org
     with open(SYS_CSV, encoding="utf-8-sig") as f:
         for r in csv.DictReader(f):
-            by_org[r["团支部"].strip()][r["姓名"].strip()] = r
+            by_org[r["团支部"].strip()][NM_R.norm_name(r["姓名"])] = r
     return by_org
 
 
@@ -91,7 +91,7 @@ def main():
     for col in COLS:
         for r in secs.get(col, []):
             roster[str(r[2]).strip()].append((col, r))
-            name_index[str(r[3]).strip()].append((col, r))
+            name_index[NM_R.norm_name(r[3])].append((col, r))
 
     names_in_org = collections.defaultdict(set)     # 姓名 -> 出现的团支部
     for org, d in sys_by_org.items():
@@ -116,41 +116,64 @@ def main():
         print("   （只做表格内核查；要核对它们，先把这些学院也抓一遍）")
         print()
 
+    # ---------- 按「简称」把写法不同的班级合并成一组 ----------
+    # 同一个班在花名册里可能写成「材料科学与工程261班」「材料科学与工程261」，
+    # 简称都是 材料261 —— 必须当成一个班来比，否则会互相把对方的人看成"不在本班"。
+    groups = collections.OrderedDict()
+    excluded_classes = []
+    for cls, org in MAPPING.items():
+        if conf.class_excluded(cls):        # 研究生班等，团委明确不用管的
+            excluded_classes.append(cls)
+            continue
+        k = NM.cls_short(cls)
+        g = groups.setdefault(k, {"org": None, "classes": []})
+        if org and not g["org"]:
+            g["org"] = org
+        g["classes"].append(cls)
+
+    if excluded_classes:
+        n = sum(len(roster[c]) for c in excluded_classes if c in roster)
+        print(f"按配置跳过 {len(excluded_classes)} 个班级（{n} 人）：")
+        print("   " + "、".join(excluded_classes))
+        print("   （config.json 里的 exclude_classes，一般用来排除研究生班）")
+        print()
+
     # ---------- 逐班对账 ----------
-    for cls, org in (MAPPING.items() if sys_by_org else []):
-        col = CLS2COL.get(cls, "")
+    for k, g in (groups.items() if sys_by_org else []):
+        org = g["org"]
+        classes = g["classes"]
+        cls_names = {str(r[3]).strip() for c in classes for _, r in roster[c]}
+        cls_rows = {str(r[3]).strip(): r for c in classes for _, r in roster[c]}
+        col = next((CLS2COL.get(c, "") for c in classes if CLS2COL.get(c)), "")
         if col and col in skipped_cols:
             continue
 
         if org is None:
             # 幽灵支部：系统组织树里能点进去，但列表页不显示（系统 bug），
-            # 这 6 个名字是人工从页面上抄下来的
-            if cls in GHOST:
-                sys_names = set(GHOST[cls])
-                cls_names = {str(r[3]).strip() for _, r in roster[cls]}
+            # 名单是人工从页面上抄下来的
+            ghost_cls = next((c for c in classes if c in GHOST), None)
+            if ghost_cls:
+                sys_names = set(GHOST[ghost_cls])
                 for n in sorted(cls_names - sys_names):
-                    c, r = next((c, r) for c, r in roster[cls] if str(r[3]).strip() == n)
-                    # 姓名写法差异属于个人问题，按团委口径不汇总，只有"确实没有"才报
+                    r = cls_rows[n]
                     if difflib.get_close_matches(n, list(sys_names), n=1, cutoff=0.5):
                         continue
-                    else:
-                        issues.append((c, r, "智慧团建无，电子版有",
-                                       f"花名册有《{n}》，该支部系统中查不到"
-                                       f"（注：本支部在系统列表页不可见，数据为人工核对）"))
+                    issues.append((col, r, "智慧团建无，电子版有",
+                                   f"花名册有《{n}》，该支部系统中查不到"
+                                   f"（注：本支部在系统列表页不可见，数据为人工核对）"))
                 for n in sorted(sys_names - cls_names):
                     if not difflib.get_close_matches(n, list(cls_names), n=1, cutoff=0.5):
-                        issues.append((col, ["", "", cls, n, "", "", "", "", "", ""],
+                        issues.append((col, ["", "", ghost_cls, n, "", "", "", "", "", ""],
                                        "智慧团建有，电子版无",
                                        f"系统该支部有《{n}》，花名册找不到（人工核对）"))
                 continue
-            for c, r in roster[cls]:
-                issues.append((c, r, "智慧团建无对应支部",
-                               f"系统里找不到与“{cls}”对应的团支部（该班 {len(roster[cls])} 人全部无归属）"))
+            for c in classes:
+                for cc, r in roster[c]:
+                    issues.append((cc, r, "智慧团建无对应支部",
+                                   f"系统里找不到与“{c}”对应的团支部（该班 {len(roster[c])} 人全部无归属）"))
             continue
 
         sys_names = set(sys_by_org.get(org, {}))
-        cls_names = {str(r[3]).strip() for _, r in roster[cls]}
-        col = roster[cls][0][0] if roster[cls] else ""
 
         # 系统有、本班没有
         for n in sorted(sys_names - cls_names):
@@ -165,19 +188,20 @@ def main():
                 mm[n]["系统"].add(org)
                 mm[n]["col"] = mm[n]["col"] or col
             else:
-                issues.append((col, ["", "", cls, n, "", "", "", "", "", ""],
+                issues.append((col, ["", "", classes[0], n, "", "", "", "", "", ""],
                                "智慧团建有，电子版无", f"系统“{org}”里有 {n}，花名册全表也找不到"))
 
         # 本班有、系统没有
         for n in sorted(cls_names - sys_names):
-            row = next(r for _, r in roster[cls] if str(r[3]).strip() == n)
+            row = cls_rows[n]
             others = names_in_org[n]
             if others:
-                mm[n]["表格"].add(cls)
+                mm[n]["表格"].add(str(row[2]).strip())
                 mm[n]["系统"] |= set(others)
                 mm[n]["col"] = mm[n]["col"] or col
             else:
-                issues.append((col, row, "智慧团建无，电子版有", f"花名册有 {n}（{cls}），系统里查不到"))
+                issues.append((col, row, "智慧团建无，电子版有",
+                               f"花名册有 {n}（{str(row[2]).strip()}），系统里查不到"))
 
     # ---------- 把「班级不符」合并成一条 ----------
     for n, info in mm.items():

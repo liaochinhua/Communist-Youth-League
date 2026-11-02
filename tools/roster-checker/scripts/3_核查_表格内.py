@@ -224,7 +224,7 @@ def main():
             # （两个人共用一个学号属于学号问题，团委明确不管，这里不报）
             same_id = by_id[str(r[1]).strip()]
             if len(same_id) > 1:
-                names = {str(x[3]).strip() for x in same_id}
+                names = {roster.norm_name(x[3]) for x in same_id}
                 if len(names) == 1:
                     where = {str(x[2]).strip() for x in same_id}
                     types.append("出现两次")

@@ -17,6 +17,7 @@
 标黄或写了情况注明的行 = 团委已经知道并记录过的，一律不做问题汇总。
 """
 import datetime
+import re
 
 import openpyxl
 
@@ -160,6 +161,15 @@ def skip_row(r):
     note = r[10] if len(r) > 10 else ""
     yellow = r[11] if len(r) > 11 else ""
     return bool(note) or yellow == "Y"
+
+
+def norm_name(s):
+    """姓名比对用的归一化：去掉所有空白（含全角空格、制表符、不换行空格）
+
+    有人录入时在名字里打了空格，系统里成了「施　施」，导出就是「施 施」，
+    花名册里是「施施」—— 不归一化会被当成两个人。
+    """
+    return re.sub(r"[\s\u3000\u00a0\ufeff]+", "", str(s or ""))
 
 
 def load(path, single_college="未命名学院", date_style="dot"):

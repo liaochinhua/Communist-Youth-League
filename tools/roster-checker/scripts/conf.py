@@ -63,6 +63,18 @@ GRADE = C.get("grade") or ""
 # 属共性问题，逐人列出来没有意义，所以默认不报。
 JIGUAN_STRICT = C.get("jiguan_strict", False)
 
+# 不参与对账的班级（按名字包含匹配）。
+# 用途：研究生班、成教班这类团委明确「不用管」的班级。
+# 花名册里没有「学历层次」这一列，脚本没法自己判断，只能在这里点名。
+# 例：["材料工程", "卓工"] 会把「材料工程2601班」「材料工程2601班（卓工能源电子)」都跳过
+EXCLUDE_CLASSES = C.get("exclude_classes") or []
+
+
+def class_excluded(cls):
+    s = str(cls or "")
+    return any(k and k in s for k in EXCLUDE_CLASSES)
+
+
 # 幽灵支部：系统组织树里能点、列表页却不显示的支部，成员名单只能人工抄
 # 放在 config.json 的 ghost_branches 里，形如 {"智能制造工程264": ["姓名1", "姓名2"]}
 GHOST = C.get("ghost_branches") or {}

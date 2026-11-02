@@ -12,6 +12,7 @@ from openpyxl.styles import Font, Alignment, PatternFill, Border, Side
 from openpyxl.utils import get_column_letter
 
 import conf
+import roster as RM       # 别名：下面有个局部变量也叫 roster
 
 BASE = conf.BASE
 OUT = conf.OUT_DIR
@@ -56,10 +57,13 @@ sys_by_org = collections.defaultdict(set)
 if R.SYS_CSV:                       # 没配系统导出时，系统内人数一律算 0
     with open(R.SYS_CSV, encoding="utf-8-sig") as f:
         for r in csv.DictReader(f):
-            sys_by_org[r["团支部"].strip()].add(r["姓名"].strip())
+            sys_by_org[r["团支部"].strip()].add(RM.norm_name(r["姓名"]))
 
 # 每个班的问题数（来自已有的两张明细表）
 def read_issues(path):
+    if not os.path.exists(path):
+        print(f"  （没找到 {os.path.basename(path)}，先跑对应那一步；这里按空表处理）")
+        return []
     ws = openpyxl.load_workbook(path, data_only=True).active
     return [list(r) + [None] * (12 - len(r)) for r in ws.iter_rows(min_row=2, values_only=True)]
 
@@ -68,18 +72,46 @@ rows_a = read_issues(os.path.join(OUT, "核查结果-表格内问题.xlsx"))
 rows_b = read_issues(os.path.join(OUT, "对账结果.xlsx"))
 
 stat = {}
+# 同一个班在花名册里可能有几种写法（"材料科学与工程261班"/"材料科学与工程261"），
+# 简称相同就合并成一行，否则同一个班会被列出好几遍
+groups = collections.OrderedDict()
+skipped_cls = []
 for cls, org in R.MAPPING.items():
-    col = CLS2COL.get(cls, "")      # 学院来自花名册的分段，不靠名字猜
-    rows_cls = [r for r in sections[col] if str(r[2]).strip() == cls]
-    roster_all = {str(r[3]).strip() for r in rows_cls}
+    if conf.class_excluded(cls):        # 研究生班等，团委明确不用管
+        skipped_cls.append(cls)
+        continue
+    k = R.NM.cls_short(cls)
+    g = groups.setdefault(k, {"org": None, "classes": []})
+    if org and not g["org"]:
+        g["org"] = org
+    g["classes"].append(cls)
+
+if skipped_cls:
+    n = sum(1 for c in skipped_cls for r in sections.get(CLS2COL.get(c, ""), [])
+            if str(r[2]).strip() == c)
+    print(f"  （按配置跳过 {len(skipped_cls)} 个班级、{n} 人：{'、'.join(skipped_cls)}）")
+
+for k, g in groups.items():
+    classes = g["classes"]
+    org = g["org"]
+    col = next((CLS2COL.get(c, "") for c in classes if CLS2COL.get(c)), "")
+    # 先算出每种写法的实际行数，显示名取"人最多"的那种；
+    # 一样多时优先选没有多余空格的写法
+    per = {c: [r for r in sections.get(col, []) if str(r[2]).strip() == c] for c in classes}
+    display = max(classes, key=lambda c: (len(per[c]), " " not in c, -len(c)))
+    rows_cls = [r for c in classes for r in per[c]]
+    roster_all = {RM.norm_name(r[3]) for r in rows_cls}
     # 标黄/写了情况注明的人算在花名册人数里，但不参与「系统里没有」的统计
-    roster = {str(r[3]).strip() for r in rows_cls if not R.NM_R.skip_row(r)}
+    roster = {RM.norm_name(r[3]) for r in rows_cls if not R.NM_R.skip_row(r)}
     if org:
         sysn = sys_by_org.get(org, set())
     else:
-        sysn = set(R.GHOST.get(cls, []))
-    stat[cls] = {
+        sysn = set()
+        for c in classes:
+            sysn |= {RM.norm_name(x) for x in R.GHOST.get(c, [])}
+    stat[k] = {
         "学院": col,
+        "班级": display,
         "花名册": len(roster_all),   # 按姓名去重（张三在表里有两行）
         "系统": len(sysn),
         "系统无": len(roster - sysn),
@@ -95,17 +127,18 @@ if not R.SYS_CSV:
         v["系统多"] = 0
         v["缺姓名"] = ""
 
-# 各问题按班级计数
+# 各问题按班级计数（问题行里是原始班级名，要换算成合并后的简称键）
 for r in rows_a + rows_b:
     cls = str(r[2] or "")
     t = str(r[10] or "")
-    if cls not in stat:
+    k = R.NM.cls_short(cls)
+    if k not in stat:
         continue
     for lab, key in (("班级不符", "班级不符"),
                      ("学号重复", "学号重复"), ("出现两次", "出现两次"),
                      ("备注为空", "备注为空"), ("智慧团建成无对应支部", "无支部")):
         if lab in t:
-            stat[cls][key] = stat[cls].get(key, 0) + 1
+            stat[k][key] = stat[k].get(key, 0) + 1
 
 wb = openpyxl.Workbook()
 
@@ -136,9 +169,9 @@ ws.cell(r0, 1, "注：花名册人数按姓名去重（张三在表里出现两�
 ws2 = wb.create_sheet("按班级")
 head(ws2, ["学院", "专业班级", "花名册人数", "系统内人数", "系统里没有", "缺失人员名单",
            "系统里多出", "班级不符", "学号重复", "出现两次", "备注为空", "需处理人数"])
-for cls, v in sorted(stat.items(), key=lambda x: (COLS.index(x[1]["学院"]) if x[1]["学院"] in COLS else 99, x[0])):
+for k, v in sorted(stat.items(), key=lambda x: (COLS.index(x[1]["学院"]) if x[1]["学院"] in COLS else 99, x[1]["班级"])):
     need = v["系统无"] + v.get("班级不符", 0) + v.get("学号重复", 0) + v.get("出现两次", 0) + v.get("备注为空", 0)
-    ws2.append([v["学院"], cls, v["花名册"], v["系统"], v["系统无"], v["缺姓名"],
+    ws2.append([v["学院"], v["班级"], v["花名册"], v["系统"], v["系统无"], v["缺姓名"],
                 v["系统多"], v.get("班级不符", 0), v.get("学号重复", 0),
                 v.get("出现两次", 0), v.get("备注为空", 0), need])
 widths(ws2, [12, 24, 11, 11, 11, 58, 11, 10, 10, 10, 10, 12])
