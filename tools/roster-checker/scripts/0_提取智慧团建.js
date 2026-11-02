@@ -3,9 +3,15 @@
  * ----------------------------------------------------------------------------
  * 用法：
  *   1. 浏览器登录智慧团建，进「团员管理 → 团员列表」
- *   2. 点进某个学院，让页面显示该学院的团支部列表
- *   3. 按 F12 → Console/控制台，把本文件整段粘进去，回车
- *   4. 跑完在控制台敲：导出      （两个字，回车就下载 CSV）
+ *   2. 停在【校级】（左边选校团委，右边列出各学院）
+ *        → 直接粘本文件，回车：脚本自己遍历所有学院，一个不落
+ *      或停在【某个学院】（右边是该学院的支部列表）
+ *        → 就只抓这一个学院
+ *   3. 跑完在控制台敲：导出      （两个字，回车就下载 CSV）
+ *
+ * 想手动控制也行：
+ *   抓全部学院()     遍历所有学院
+ *   抓当前学院()     只抓当前这个学院的支部
  *
  * 脚本只在你自己已登录的浏览器里跑，用你页面自带的登录态，
  * 不会也不需要你的账号密码。导出的数据包含真实姓名，请勿外传。
@@ -16,148 +22,132 @@
  *   · 默认只抓 2026 级；换年级见文件开头「抓哪几届」的说明。
  * ==========================================================================*/
 
-(async () => {
-  const KEY = 'zhtj_members_v1';        // localStorage 里的暂存键
+/* ---------------------------------------------------------------------------
+ * 抓哪几届、排除哪些
+ * -------------------------------------------------------------------------*/
+// 粘本脚本之前可以先在控制台敲一行来改：
+//     要抓的年级 = ['2027']            只抓 2027 级
+//     要抓的年级 = 'all'               所有年级
+//     排除支部   = /研究生|待转接|教师/
+(() => {
 
-  // ★ 抓哪几届 ★
-  //
-  // 默认只抓 2026 级。想换年级，有两个办法：
-  //
-  //   办法一（推荐，不用改文件）：粘本脚本之前，先在控制台敲一行
-  //        要抓的年级 = ['2027']                       ← 只抓 2027 级
-  //        要抓的年级 = ['2023','2024','2025','2026']   ← 近几年一起抓
-  //        要抓的年级 = 'all'                          ← 所有 xx 级都抓
-  //
-  //   办法二：直接改下面这行的默认值。
-  //
-  const _want = (typeof window.要抓的年级 !== 'undefined')
-    ? window.要抓的年级
-    : ['2026'];
+const _want = (typeof window.要抓的年级 !== 'undefined') ? window.要抓的年级 : ['2026'];
+const YEARS = (_want === 'all')
+  ? []
+  : (Array.isArray(_want) ? _want.map(String) : [String(_want)]);
 
-  const YEARS = (_want === 'all')
-    ? []
-    : (Array.isArray(_want) ? _want.map(String) : [String(_want)]);
+// 年级有两种写法：2026级（大部分）和 26级（有的支部建的时候省了「20」）
+const yearPat = YEARS.length
+  ? YEARS.map(y => (String(y).length === 4 ? `${y}|${String(y).slice(2)}` : `(?:20)?${y}`)).join('|')
+  : '20\\d{2}|\\d{2}';
+const FILTER = new RegExp(`(?:${yearPat})级`);
 
-  // 没指定年级时匹配任何「20xx级」
-  const FILTER = YEARS.length
-    ? new RegExp('(' + YEARS.join('|') + ')级')
-    : /20\d{2}级/;
+const EXCLUDE = (typeof window.排除支部 !== 'undefined')
+  ? new RegExp(window.排除支部)
+  : /研究生|待转接/;
 
-  // ★ 哪些支部不要 ★
-  //
-  // 有些支部名字里也带「2026级」，但不是学生班：
-  //   机械工程与智能制造学院2026级研究生团支部
-  //   数据学院团委待转接团支部2
-  // 默认排除「研究生」和「待转接」。
-  // 想改，粘脚本前敲：  排除支部 = /研究生|待转接|教师/
-  //
-  const EXCLUDE = (typeof window.排除支部 !== 'undefined')
-    ? new RegExp(window.排除支部)
-    : /研究生|待转接/;
+const KEY = 'zhtj_members_v1';
 
-  const sleep = ms => new Promise(r => setTimeout(r, ms));
-  const store = JSON.parse(localStorage.getItem(KEY) || '{}');
-  const log = (...a) => console.log('[抓取]', ...a);
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+const log = (...a) => console.log('[抓取]', ...a);
+const warn = (...a) => console.warn('[抓取]', ...a);
 
-  log(`范围：${YEARS.length ? YEARS.join(' / ') + ' 级' : '所有年级（20xx级）'}`);
-  log(`排除：${EXCLUDE}`);
+const store = JSON.parse(localStorage.getItem(KEY) || '{}');
+const save = () => localStorage.setItem(KEY, JSON.stringify(store));
 
-  // 之前跑过的话，localStorage 里可能还留着研究生/待转接支部的数据，先清掉
-  {
-    const dirty = Object.keys(store).filter(k => EXCLUDE.test(k));
-    if (dirty.length) {
-      dirty.forEach(k => delete store[k]);
-      localStorage.setItem(KEY, JSON.stringify(store));
-      log(`已清掉旧数据里的 ${dirty.length} 个非学生支部：${dirty.join('、')}`);
-    }
+// 之前跑过的话，localStorage 里可能还留着研究生/待转接支部的数据，先清掉
+{
+  const dirty = Object.keys(store).filter(k => EXCLUDE.test(k));
+  if (dirty.length) {
+    dirty.forEach(k => delete store[k]);
+    save();
+    log(`已清掉旧数据里的 ${dirty.length} 个非学生支部：${dirty.join('、')}`);
   }
+}
 
-  // 当前页的团支部行（学院层级）
-  const orgRows = () => [...document.querySelectorAll('table tr')]
-    .map(tr => ({ tr, cells: [...tr.cells].map(c => c.innerText.trim()) }))
-    .filter(o => o.cells.length >= 4 && o.cells.some(c => c.includes('团支部')));
+/* ---------------------------------------------------------------------------
+ * 页面工具
+ * -------------------------------------------------------------------------*/
+const rowsOf = () => [...document.querySelectorAll('table tr')]
+  .map(tr => ({ tr, cells: [...tr.cells].map(c => c.innerText.trim()) }))
+  .filter(o => o.cells.length >= 3);
 
-  // 页签名：用第一行的支部名判断有没有翻页成功
-  const sig = () => (orgRows()[0]?.cells[1] || '').slice(0, 20);
+// 支部行：名字里带「团支部」
+const orgRows = () => rowsOf().filter(o => o.cells.some(c => c.includes('团支部')));
 
-  // 分页按钮（首页/上一页/下一页/末页）
-  const btn = t => [...document.querySelectorAll('a,button,span')]
-    .find(e => e.innerText.trim() === t);
+// 学院行（校级那一层）：名字是「XX学院团委」，不带「团支部」
+const collegeRows = () => rowsOf().filter(o =>
+  o.cells[1] && o.cells[1].includes('学院') && !o.cells[1].includes('团支部'));
 
-  const waitFor = async (fn, ms = 8000) => {
-    const t = Date.now();
-    while (Date.now() - t < ms) { if (fn()) return true; await sleep(200); }
-    return false;
-  };
+const sig = () => (rowsOf()[0]?.cells[1] || '').slice(0, 20);
 
-  const PAGE = async (dir) => {
-    const b = btn(dir);
-    if (!b) return false;
-    const before = sig();
-    b.click();
-    return await waitFor(() => sig() !== before, 6000);
-  };
+const btn = t => [...document.querySelectorAll('a,button,span')]
+  .find(e => e.innerText.trim() === t);
 
-  // 团员表：有 11 位手机号的行才算
-  const phoneRows = () => [...document.querySelectorAll('table tr')]
-    .map(tr => [...tr.cells].map(c => c.innerText.trim()))
-    .filter(cs => cs.some(c => /^1\d{10}$/.test(c)))
-    .map(cs => {
-      const i = cs.findIndex(c => /^1\d{10}$/.test(c));
-      return { name: cs[i - 1], phone: cs[i], duty: cs[i + 2] || '' };
-    });
+const waitFor = async (fn, ms = 8000) => {
+  const t = Date.now();
+  while (Date.now() - t < ms) { if (fn()) return true; await sleep(200); }
+  return false;
+};
 
-  // ---------- 阶段一：把所有页的团支部列出来 ----------
+const PAGE = async (dir) => {
+  const b = btn(dir);
+  if (!b) return false;
+  const before = sig();
+  b.click();
+  return await waitFor(() => sig() !== before, 6000);
+};
+
+// 团员表：有 11 位手机号的行才算
+const phoneRows = () => [...document.querySelectorAll('table tr')]
+  .map(tr => [...tr.cells].map(c => c.innerText.trim()))
+  .filter(cs => cs.some(c => /^1\d{10}$/.test(c)))
+  .map(cs => {
+    const i = cs.findIndex(c => /^1\d{10}$/.test(c));
+    return { name: cs[i - 1], phone: cs[i], duty: cs[i + 2] || '' };
+  });
+
+const clickEye = row =>
+  (row.tr.querySelector('i,svg,a,button,[class*="icon"]') || row.tr.cells[row.tr.cells.length - 1]).click();
+
+const back = async () => {
+  btn('返回上一级')?.click();
+  await sleep(1200);
+};
+
+const totalPeople = () =>
+  Object.values(store).reduce((s, o) => s + Object.keys(o).length, 0);
+
+/* ---------------------------------------------------------------------------
+ * 抓当前学院的支部（阶段一 + 阶段二）
+ * -------------------------------------------------------------------------*/
+async function scrapeCurrentCollege() {
   log('阶段一：收集团支部清单…');
   await PAGE('首页');
   await sleep(500);
+
   const names = new Set(), seen = new Set(), excluded = new Set();
   for (let p = 0; p < 20; p++) {
     orgRows().forEach(o => {
       const n = o.cells[1].replace(/\s+/g, '');
       if (!FILTER.test(n)) return;
-      if (EXCLUDE.test(n)) { excluded.add(n); return; }   // 研究生、待转接之类
+      if (EXCLUDE.test(n)) { excluded.add(n); return; }
       names.add(n);
     });
     if (seen.has(sig())) break;
     seen.add(sig());
     if (!await PAGE('下一页')) break;
   }
+
   const targets = [...names];
   log(`符合条件的团支部 ${targets.length} 个`);
   if (excluded.size) {
     log(`已排除 ${excluded.size} 个非学生支部：`);
     [...excluded].forEach(n => log('   ×', n));
   }
-  if (!targets.length) {
-    // 看看当前这一层到底是什么
-    const allRows = [...document.querySelectorAll('table tr')]
-      .map(tr => (tr.cells[1] ? tr.cells[1].innerText.trim() : ''))
-      .filter(Boolean);
-    const looksLikeCollegeLevel = allRows.some(n => n.includes('团委') && !n.includes('团支部'));
+  if (!targets.length) return 0;
 
-    if (looksLikeCollegeLevel) {
-      console.warn('现在停在【校级】的学院列表上，脚本不在这一层工作。');
-      console.warn('请先点进一个学院（点那一行的眼睛图标），让右边变成支部列表，再跑一次。');
-      console.warn('当前看到的组织：');
-      allRows.slice(0, 12).forEach(n => console.log('   ', n));
-      return;
-    }
-
-    if (orgRows().length) {
-      console.warn('这一层是支部列表，但没有一个符合条件。检查一下年级设置：');
-      console.warn(`  要抓的年级 = ${YEARS.length ? JSON.stringify(YEARS) : "'all'"}`);
-      console.warn(`  排除规则   = ${EXCLUDE}`);
-      console.warn('当前页看到的支部：');
-      orgRows().forEach(o => console.log('   ', o.cells[1]));
-      return;
-    }
-
-    console.warn('没看到任何表格行。确认页面已经加载完、并且停在某个学院的支部列表上。');
-    return;
-  }
-
-  // ---------- 阶段二：逐个钻进去抓 ----------
+  // 阶段二
   for (let i = 0; i < targets.length; i++) {
     const name = targets[i];
     if (store[name] && Object.keys(store[name]).length) {
@@ -165,7 +155,7 @@
       continue;
     }
 
-    await PAGE('首页');                       // 每次都从首页找，避免只往后翻
+    await PAGE('首页');
     await sleep(400);
     let row = null;
     for (let p = 0; p < 20; p++) {
@@ -173,14 +163,13 @@
       if (row) break;
       if (!await PAGE('下一页')) break;
     }
-    if (!row) { log(`✗ 找不到 ${name}`); continue; }
+    if (!row) { login_fail_warn(); log(`✗ 找不到 ${name}`); continue; }
 
     log(`(${i + 1}/${targets.length}) 进入 ${name}`);
-    (row.tr.querySelector('i,svg,a,button,[class*="icon"]') || row.tr.cells[3]).click();
+    clickEye(row);
     if (!await waitFor(() => phoneRows().length > 0, 10000)) {
       log('  ✗ 没等到团员列表');
-      btn('返回上一级')?.click();
-      await sleep(1200);
+      await back();
       continue;
     }
 
@@ -196,38 +185,152 @@
       if (!await waitFor(() => phoneRows()[0]?.name !== before, 6000)) break;
     }
 
-    localStorage.setItem(KEY, JSON.stringify(store));
-    btn('返回上一级')?.click();
+    save();
+    await back();
     await waitFor(() => orgRows().length > 0, 8000);
     await sleep(500);
   }
+  return targets.length;
+}
 
-  const total = Object.values(store).reduce((s, o) => s + Object.keys(o).length, 0);
-  log(`✅ 完成：${Object.keys(store).length} 个团支部，${total} 人`);
-  log('💡 接下来在控制台敲两个字：导出     （不用括号，回车就下载）');
-})();
-
+function login_fail_warn() {
+  if (!document.body.innerText.includes('团员')) {
+    warn('页面看起来不像团员列表，可能掉登录了。刷新重新登录后再跑。');
+  }
+}
 
 /* ---------------------------------------------------------------------------
- * 导出函数：装一次，随时下载 CSV
+ * 列出校级那一层的所有学院
+ * -------------------------------------------------------------------------*/
+async function listColleges() {
+  await PAGE('首页');
+  await sleep(600);
+  const found = new Set(), seen = new Set();
+  for (let p = 0; p < 20; p++) {
+    collegeRows().forEach(o => {
+      const n = o.cells[1].replace(/\s+/g, '');
+      if (!n.includes('学院')) return;          // 直属团总支、生活园区团工委之类不要
+      if (EXCLUDE.test(n)) return;              // 待转接、研究生这些也不要
+      found.add(n);
+    });
+    if (seen.has(sig())) break;
+    seen.add(sig());
+    if (!await PAGE('下一页')) break;
+  }
+  return [...found];
+}
+
+async function openCollege(name) {
+  await PAGE('首页');
+  await sleep(500);
+  let row = null;
+  for (let p = 0; p < 20; p++) {
+    row = collegeRows().find(o => o.cells[1].replace(/\s+/g, '') === name);
+    if (row) break;
+    if (!await PAGE('下一页')) break;
+  }
+  if (!row) return false;
+  clickEye(row);
+  // 等到右边变成支部列表
+  return await waitFor(() => orgRows().length > 0 && orgRows()[0].cells[1].includes('团支部'), 10000);
+}
+
+/* ---------------------------------------------------------------------------
+ * 对外的两个入口
+ * -------------------------------------------------------------------------*/
+window.抓当前学院 = async () => {
+  log(`范围：${YEARS.length ? YEARS.join(' / ') + ' 级' : '所有年级'}｜排除：${EXCLUDE}`);
+  const n = await scrapeCurrentCollege();
+  if (!n) {
+    warn('这个学院没抓到支部。确认右边显示的是支部列表、并且年级设置对得上。');
+    return;
+  }
+  log(`✅ 本次 ${n} 个团支部，累计 ${Object.keys(store).length} 个支部 / ${totalPeople()} 人`);
+  log('💡 接下来在控制台敲两个字：导出');
+};
+
+window.抓全部学院 = async () => {
+  log(`范围：${YEARS.length ? YEARS.join(' / ') + ' 级' : '所有年级'}｜排除：${EXCLUDE}`);
+  const colleges = await listColleges();
+  if (!colleges.length) {
+    warn('没找到学院列表。先停在校级（左边选校团委），再跑。');
+    return;
+  }
+
+  log(`共 ${colleges.length} 个学院：${colleges.join('、')}`);
+  log('中途别动页面，也别切标签页（切走浏览器会降频，会很慢）');
+
+  const failed = [];
+  for (let i = 0; i < colleges.length; i++) {
+    const name = colleges[i];
+    log(`\n===== (${i + 1}/${colleges.length}) ${name} =====`);
+    if (!await openCollege(name)) {
+      warn(`✗ 进不去 ${name}，跳过`);
+      failed.push(name);
+      continue;
+    }
+    await sleep(600);
+    const n = await scrapeCurrentCollege();
+    if (!n) {
+      warn(`✗ ${name} 里没有符合条件的支部`);
+      failed.push(name);
+    }
+    await back();
+    await waitFor(() => collegeRows().length > 0, 10000);
+    await sleep(800);
+  }
+
+  log(`\n✅ 全部完成：${Object.keys(store).length} 个团支部，${totalPeople()} 人`);
+  if (failed.length) {
+    warn(`以下学院没抓成，需要手动补：${failed.join('、')}`);
+  }
+  log('💡 接下来在控制台敲两个字：导出');
+};
+
+window.抓取当前支部 = async () => {
+  const sleep2 = ms => new Promise(r => setTimeout(r, ms));
+  const m = document.body.innerText.match(/(\S{2,60}?团支部)\s*共有团员\s*(\d+)\s*人/);
+  if (!m) {
+    warn('没认出当前是哪个支部。先点进那个支部，让它显示名单。');
+    return;
+  }
+
+  const name = m[1].replace(/\s+/g, '');
+  store[name] = {};
+  for (let p = 0; p < 30; p++) {
+    const rs = phoneRows();
+    rs.forEach(r => { if (r.name) store[name][r.phone || r.name] = { ...r }; });
+    console.log('[抓取]', `  ${name} 第${p + 1}页 +${rs.length} → ${Object.keys(store[name]).length}`);
+    const before = rs[0]?.name;
+    const nb = btn('下一页');
+    if (!nb) break;
+    nb.click();
+    if (!await waitFor(() => phoneRows()[0]?.name !== before, 6000)) break;
+    await sleep2(300);
+  }
+  save();
+  log(`✅ 已记录 ${name}：${Object.keys(store[name]).length} 人`);
+};
+
+/* ---------------------------------------------------------------------------
+ * 导出
  *
- * 两种叫法都可以：
  *   导出            ← 推荐，只有两个字，不用敲括号
  *   导出团员()      ← 括号必须是英文半角 ()
  * -------------------------------------------------------------------------*/
 window.导出团员 = () => {
-  const store = JSON.parse(localStorage.getItem('zhtj_members_v1') || '{}');
+  const s = JSON.parse(localStorage.getItem(KEY) || '{}');
   const lines = ['团支部,姓名,手机号,职务'];
   let n = 0;
-  for (const org in store) {
-    for (const k in store[org]) {
-      const r = store[org][k];
+  for (const org in s) {
+    for (const k in s[org]) {
+      const r = s[org][k];
       lines.push([org, r.name, r.phone, r.duty].join(','));
       n++;
     }
   }
   if (!n) {
-    console.warn('还没有抓到任何数据，先跑一遍抓取。');
+    warn('还没有抓到任何数据，先跑一遍抓取。');
     return;
   }
   const a = document.createElement('a');
@@ -235,12 +338,10 @@ window.导出团员 = () => {
     new Blob(['\uFEFF' + lines.join('\r\n')], { type: 'text/csv;charset=utf-8' }));
   a.download = '智慧团建-团员名单.csv';
   a.click();
-  console.log('导出', n, '条');
+  log(`导出 ${n} 条`);
 };
 
-// 「括号-free」别名：在控制台里只敲 `导出` 两个字回车就会触发。
-// 原理是给它装了个 getter —— 读取这个属性的时候顺手执行一次导出。
-// 这样中文输入法下敲不出半角括号也没关系。
+// 「括号-free」别名：只敲 `导出` 两个字回车就会触发
 Object.defineProperty(window, '导出', {
   configurable: true,
   get() {
@@ -249,45 +350,21 @@ Object.defineProperty(window, '导出', {
   },
 });
 
-
 /* ---------------------------------------------------------------------------
- * 【单个支部抓取】—— 应对「组织树可进、列表页不显示」的幽灵支部
- *   手动点进那个支部，让它显示名单，再跑这段
+ * 自动执行：判断当前在哪一层，然后干活
  * -------------------------------------------------------------------------*/
-window.抓取当前支部 = async () => {
-  const KEY = 'zhtj_members_v1';
-  const sleep = ms => new Promise(r => setTimeout(r, ms));
-  const store = JSON.parse(localStorage.getItem(KEY) || '{}');
+(async () => {
+  const hasOrg = orgRows().length > 0;
+  const hasCollege = collegeRows().length > 0;
 
-  const m = document.body.innerText.match(/(\S{2,60}?团支部)\s*共有团员\s*(\d+)\s*人/);
-  if (!m) {
-    console.warn('没识别到支部名（有些异常支部连标题都不显示），请手工建一个 key');
-    return;
+  if (hasOrg) {
+    // 已经在某个学院里了，只抓当前学院
+    await window.抓当前学院();
+  } else if (hasCollege) {
+    await window.抓全部学院();
+  } else {
+    warn('没看到表格。确认已登录、并停在「团员管理 → 团员列表」页面。');
   }
-  const org = m[1].replace(/\s+/g, ''), total = +m[2];
+})();
 
-  const rows = () => [...document.querySelectorAll('table tr')]
-    .map(tr => [...tr.cells].map(c => c.innerText.trim()))
-    .filter(cs => cs.some(c => /^1\d{10}$/.test(c)))
-    .map(cs => {
-      const i = cs.findIndex(c => /^1\d{10}$/.test(c));
-      return { name: cs[i - 1], phone: cs[i], duty: cs[i + 2] || '' };
-    });
-
-  store[org] = {};
-  for (let p = 0; p < 20; p++) {
-    const rs = rows();
-    rs.forEach(r => { if (r.name) store[org][r.phone || r.name] = { ...r }; });
-    console.log(`${org} 第${p + 1}页 +${rs.length} → ${Object.keys(store[org]).length}/${total}`);
-    const nb = [...document.querySelectorAll('a,button,span')]
-      .find(e => e.innerText.trim() === '下一页');
-    if (!nb) break;
-    const before = rs[0]?.name;
-    nb.click();
-    let ok = false;
-    for (let i = 0; i < 20; i++) { await sleep(200); if (rows()[0]?.name !== before) { ok = true; break; } }
-    if (!ok) break;
-  }
-  localStorage.setItem(KEY, JSON.stringify(store));
-  console.log(`✅ ${org} 共 ${Object.keys(store[org]).length} 人`);
-};
+})();

@@ -70,6 +70,11 @@ JIGUAN_STRICT = C.get("jiguan_strict", False)
 EXCLUDE_CLASSES = C.get("exclude_classes") or []
 
 
+# 人工指定「系统支部 -> 花名册班级」，规则猜不出来的用它
+# 例：{"宇树创新班": "工业智能261"}   （左边写支部名里的一段，能唯一确定即可）
+ORG_ALIASES = C.get("org_aliases") or {}
+
+
 def class_excluded(cls):
     s = str(cls or "")
     return any(k and k in s for k in EXCLUDE_CLASSES)

@@ -55,12 +55,16 @@ def table():
 
 def _norm(name):
     s = str(name or "").strip().replace(" ", "").replace("\u3000", "")
-    s = re.sub(r"[（(]\s*[）)]$", "", s)
+    s = s.replace("(", "（").replace(")", "）")
+    s = re.sub(r"（\s*）", "", s)                  # 空括号
+    # 「金融学（中美合作办学）」这类说明性括号只是注解，去掉再比对；
+    # 但「（专升本）」是学历层次，必须留着，后面要单独处理
+    s = re.sub(r"（(?!专升本)[^）]*）", "", s)
     s = re.sub(r"班$", "", s)
     s = re.sub(r"\d+$", "", s)
     s = s.replace("专业", "")
-    s = s.replace("(", "（").replace(")", "）")
-    return ALIAS.get(s, s)          # 错别字/多余的字统一成规范名
+    s = ALIAS.get(s, s)          # 错别字/多余的字统一成规范名
+    return s
 
 
 def _prefix(name):
@@ -70,11 +74,21 @@ def _prefix(name):
         return t[n]
     if "专升本" in n:
         base = n.replace("（专升本）", "").replace("专升本", "")
+        if base.endswith("类"):
+            base = base[:-1]
         s = t.get(base) or next((v for k, v in t.items() if k.startswith(base)), base)
         return s + "专升本"
     for full, short in sorted(t.items(), key=lambda x: -len(x[0])):
         if n.startswith(full) or full.startswith(n):
             return short
+    # 「土木类」「机械类」这种带「类」的写法，去掉类再试一次
+    if n.endswith("类"):
+        base = n[:-1]
+        if base in t:
+            return t[base]
+        for full, short in sorted(t.items(), key=lambda x: -len(x[0])):
+            if base.startswith(full):
+                return short
     for full, short in FALLBACK:
         if n.startswith(full):
             return short
@@ -98,40 +112,89 @@ def cls_short(cls):
 
 
 def org_short(org):
-    """‘信息与计算科学专业2026级1班团支部’ -> ‘信计261’"""
+    """‘信息与计算科学专业2026级1班团支部’ -> ‘信计261’
+
+    年份有两种写法：2026级（大部分）和 26级（有些支部建的时候省了「20」）。
+    两种都要认，否则土建那种全按 26 级建的学院，会被整院判成"系统里多出来"。
+    """
     s = str(org or "").strip()
     if "待转接" in s:
         return s.replace("团委", "").replace("团支部", "支部")
     if "研究生" in s:
         return s.replace("团支部", "")
     s = s.replace("团支部", "")
-    m = re.match(r"(.+?)(\d{4})级(\d+)班$", s)
+    m = re.match(r"(.+?)(\d{4}|\d{2})级(\d+)班$", s)
     if not m:
         return _prefix(s)
-    return f"{_prefix(m.group(1))}{m.group(2)[2:]}{m.group(3)}"
+    year = m.group(2)
+    yy = year[2:] if len(year) == 4 else year          # 2026 -> 26
+    return f"{_prefix(m.group(1))}{yy}{m.group(3)}"
 
 
-def auto_map(classes, orgs):
+def auto_map(classes, orgs, aliases=None):
     """花名册班级 与 系统团支部 自动配对
 
     同一个班在花名册里可能有几种写法（多了空格、全角/半角括号、"班"字有无），
     它们算出来的简称相同 —— 这些写法都要指向同一个支部，不能只配上一个。
 
+    还有两类写法差异靠规则猜不出来，留给 aliases（config.json 的 org_aliases）：
+        「工业智能专业2026级宇树创新班团支部」   ← 没有班号
+        「XX专业2026级1班团支部」                ← 花名册里叫别的名字
+
+    aliases: {系统支部名（可以是关键词）: 花名册班级名}
+
     返回 (mapping, 花名册多出来的, 系统多出来的)
         mapping: {班级: 团支部 or None}
     """
-    by_short = {}
-    for o in orgs:
-        by_short[org_short(o)] = o          # 同简称的支部若重复，保留最后一个
+    aliases = aliases or {}
+    by_class = {str(c).strip(): c for c in classes}
 
     mapping, left = {}, []
     for c in classes:
+        mapping[c] = None
+
+    # 1. 人工指定的优先
+    for key, cls in aliases.items():
+        hit_cls = by_class.get(str(cls).strip())
+        if not hit_cls:
+            continue
+        hit_org = next((o for o in orgs if str(key) in o), None)
+        if hit_org:
+            mapping[hit_cls] = hit_org
+
+    # 2. 按简称自动配（人工已经配好的不动）
+    by_short = {}
+    taken = set(mapping.values())
+    for o in orgs:
+        if o in taken:
+            continue
+        by_short[org_short(o)] = o
+
+    for c in classes:
+        if mapping[c]:
+            continue
         k = cls_short(c)
         org = by_short.get(k)
         mapping[c] = org
         if not org:
             left.append(c)
+        else:
+            taken.add(org)
 
+    # 3. 兜底：支部名里没有班号（如「…2026级宇树创新班」），
+    #    如果只剩一个同类班级没配上，就认给它
     used = {v for v in mapping.values() if v}
+    for o in orgs:
+        if o in used:
+            continue
+        short = org_short(o)
+        if any(ch.isdigit() for ch in short[-1:]):
+            continue                       # 有班号的走上面那步，别乱配
+        cand = [c for c in left if cls_short(c).startswith(short)]
+        if len(cand) == 1:
+            mapping[cand[0]] = o
+            left.remove(cand[0])
+            used.add(o)
+
     extra = [o for o in orgs if o not in used]
     return mapping, left, extra

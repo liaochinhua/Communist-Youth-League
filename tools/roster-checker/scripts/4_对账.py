@@ -75,7 +75,7 @@ def _load_sys():
 SYS_BY_ORG = _load_sys()
 CLASSES = list(dict.fromkeys(
     str(r[2]).strip() for c in COLS for r in SECTIONS.get(c, [])))
-MAPPING, UNMATCHED, EXTRA_ORGS = NM.auto_map(CLASSES, list(SYS_BY_ORG))
+MAPPING, UNMATCHED, EXTRA_ORGS = NM.auto_map(CLASSES, list(SYS_BY_ORG), conf.ORG_ALIASES)
 for _c in GHOST:                       # 幽灵支部：系统里查不到，用人工抄的名单
     MAPPING.setdefault(_c, None)
 
@@ -167,10 +167,16 @@ def main():
                                        "智慧团建有，电子版无",
                                        f"系统该支部有《{n}》，花名册找不到（人工核对）"))
                 continue
-            for c in classes:
-                for cc, r in roster[c]:
-                    issues.append((cc, r, "智慧团建无对应支部",
-                                   f"系统里找不到与“{c}”对应的团支部（该班 {len(roster[c])} 人全部无归属）"))
+            # 整班没有支部：按班级汇总（见「支部对账」表）。
+            # 但如果这个"班"只有一两个人，多半是那个人自己把年级/班级写错了，
+            # 按班级报看不出是谁，所以这种小班仍然按人报，方便直接找人改。
+            total = sum(len(roster[c]) for c in classes)
+            if total <= 2:
+                for c in classes:
+                    for cc, r in roster[c]:
+                        issues.append((cc, r, "智慧团建无对应支部",
+                                       f"系统里找不到与“{c}”对应的团支部"
+                                       f"（这个班一共 {len(roster[c])} 人，可能是班级名写错了）"))
             continue
 
         sys_names = set(sys_by_org.get(org, {}))
@@ -212,16 +218,39 @@ def main():
                        f"表格在“{tb}”，智慧团建在“{xt}”"))
 
     extra_orgs = [o for o in sys_by_org if o not in MAPPING.values() and o not in IGNORE_ORG]
+
+    # ---------- 支部层问题：整班没有支部 / 支部没有班 ----------
+    # 这类不该按人报（一个班 20 人就是 20 条），单独汇总成一张表
+    org_issues = []
+    for c in excluded_classes:
+        pass
+    for k, g in (groups.items() if sys_by_org else []):
+        if g["org"] is not None:
+            continue
+        classes = [c for c in g["classes"] if c not in excluded_classes]
+        if not classes or any(c in GHOST for c in classes):
+            continue
+        col = next((CLS2COL.get(c, "") for c in classes if CLS2COL.get(c)), "")
+        n = sum(len(roster[c]) for c in classes)
+        if n <= 2:
+            continue          # 一两个人的"班"多半是个人写错，按人报更清楚
+        org_issues.append((col, "、".join(classes), n, "花名册有，系统里没有这个支部",
+                           f"花名册有 {n} 人，但智慧团建里找不到对应的团支部"))
+    for o in extra_orgs:
+        n = len(sys_by_org.get(o, {}))
+        col = next((CLS2COL.get(c, "") for c in MAPPING if MAPPING[c] == o), "")
+        org_issues.append((col, o, n, "系统里有，花名册没有这个班",
+                           f"系统该支部 {n} 人，花名册里没有对应的班级"))
     print("=== 对账结果 ===")
     print(f"花名册 {sum(len(v) for k, v in roster.items() if k in MAPPING)} 人，"
           f"系统 {len(sys_rows)} 人，系统团支部 {len(sys_by_org)} 个")
     print("\n按类型：")
     for t, n in collections.Counter(i[2] for i in issues).most_common():
         print(f"  {t:22} {n}")
-    if extra_orgs:
-        print("\n系统里多出来的支部（未参与对账）：")
-        for o in extra_orgs:
-            print(f"  {o}  {len(sys_by_org[o])} 人")
+    if org_issues:
+        print("\n支部层面的问题：")
+        for col, name, n, t, _ in org_issues:
+            print(f"  [{t}] {name}  {n} 人")
 
     # ---------- 写表 ----------
     os.makedirs(OUT_DIR, exist_ok=True)
@@ -247,6 +276,25 @@ def main():
         ws.column_dimensions[get_column_letter(j)].width = w
     ws.freeze_panes = "A2"
     ws.auto_filter.ref = f"A1:L{len(issues) + 1}"
+
+    if org_issues:
+        ws2 = wb.create_sheet("支部对账")
+        head2 = ["学院", "班级 / 支部", "人数", "问题类型", "说明"]
+        for j, h in enumerate(head2, 1):
+            c = ws2.cell(1, j, h)
+            c.font = Font(bold=True, color="FFFFFF")
+            c.fill = PatternFill("solid", fgColor="C00000")
+            c.alignment = Alignment(horizontal="center", vertical="center")
+            c.border = Border(left=thin, right=thin, top=thin, bottom=thin)
+        for i, (col, name, n, t, note) in enumerate(org_issues, 2):
+            for j, v in enumerate([col, name, n, t, note], 1):
+                cell = ws2.cell(i, j, v)
+                cell.border = Border(left=thin, right=thin, top=thin, bottom=thin)
+                cell.alignment = Alignment(vertical="center",
+                                           horizontal="center" if j in (1, 3) else "left")
+        for j, w in enumerate([11, 46, 8, 28, 46], 1):
+            ws2.column_dimensions[get_column_letter(j)].width = w
+        ws2.freeze_panes = "A2"
 
     path = os.path.join(OUT_DIR, "对账结果.xlsx")
     wb.save(path)

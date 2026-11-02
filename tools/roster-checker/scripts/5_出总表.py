@@ -139,6 +139,24 @@ def write_list(wb, rows, title="有误名单"):
 a = read(P_A)
 b = read(P_B)
 
+
+def read_org_issues():
+    """支部层面的问题（整班没支部 / 支部没班），追加到名单末尾"""
+    if not os.path.exists(P_B):
+        return []
+    wb = openpyxl.load_workbook(P_B, data_only=True)
+    if "支部对账" not in wb.sheetnames:
+        return []
+    out = []
+    for r in wb["支部对账"].iter_rows(min_row=2, values_only=True):
+        col, name, n, t, note = (list(r) + [None] * 5)[:5]
+        out.append([col or "", "", name or "", "（整班）", "", "", "", "", "", "",
+                    t or "", f"{note}（{n} 人）"])
+    return out
+
+
+org_rows = read_org_issues()
+
 rows_plain = merge([[r[0], r[1], r[2], r[3], r[4], r[5], r[6], r[7], r[8], r[9],
                      compose_plain(r[10], r[11])] for r in a + b])
 rows_full = merge([[r[0], r[1], r[2], r[3], r[4], r[5], r[6], r[7], r[8], r[9],
@@ -187,13 +205,13 @@ def add_summary(wb, rows):
 
 # ---------- ① 提交版 ----------
 wb = openpyxl.Workbook()
-write_list(wb, rows_plain)
+write_list(wb, rows_plain + org_rows)
 add_summary(wb, rows_plain)
 wb.save(DST_MAIN)
 
 # ---------- ② 复核版 ----------
 wb2 = openpyxl.Workbook()
-write_list(wb2, rows_full)
+write_list(wb2, rows_full + org_rows)
 add_summary(wb2, rows_full)
 
 
