@@ -130,8 +130,30 @@
     [...excluded].forEach(n => log('   ×', n));
   }
   if (!targets.length) {
-    console.warn('一个都没匹配上。当前页看到的支部名：');
-    orgRows().forEach(o => console.log('   ', o.cells[1]));
+    // 看看当前这一层到底是什么
+    const allRows = [...document.querySelectorAll('table tr')]
+      .map(tr => (tr.cells[1] ? tr.cells[1].innerText.trim() : ''))
+      .filter(Boolean);
+    const looksLikeCollegeLevel = allRows.some(n => n.includes('团委') && !n.includes('团支部'));
+
+    if (looksLikeCollegeLevel) {
+      console.warn('现在停在【校级】的学院列表上，脚本不在这一层工作。');
+      console.warn('请先点进一个学院（点那一行的眼睛图标），让右边变成支部列表，再跑一次。');
+      console.warn('当前看到的组织：');
+      allRows.slice(0, 12).forEach(n => console.log('   ', n));
+      return;
+    }
+
+    if (orgRows().length) {
+      console.warn('这一层是支部列表，但没有一个符合条件。检查一下年级设置：');
+      console.warn(`  要抓的年级 = ${YEARS.length ? JSON.stringify(YEARS) : "'all'"}`);
+      console.warn(`  排除规则   = ${EXCLUDE}`);
+      console.warn('当前页看到的支部：');
+      orgRows().forEach(o => console.log('   ', o.cells[1]));
+      return;
+    }
+
+    console.warn('没看到任何表格行。确认页面已经加载完、并且停在某个学院的支部列表上。');
     return;
   }
 
