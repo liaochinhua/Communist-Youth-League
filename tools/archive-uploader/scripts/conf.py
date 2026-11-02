@@ -18,6 +18,11 @@ if os.path.exists(_path):
         if _path == EXAMPLE_PATH:
             print("[提示] 还没建 config.json，先用 config.example.json 的默认值跑；"
                   "复制一份改成本机路径即可")
+    except json.JSONDecodeError as e:
+        print(f"[警告] 配置文件读不出来（{e}），将使用默认值")
+        if "escape" in str(e).lower():
+            print("       这多半是路径里的反斜杠没转义。JSON 里要么写两个反斜杠，")
+            print(r'       要么用正斜杠："D:/团委档案/x.xlsx"（Windows 上也完全可用）')
     except Exception as e:                       # 配置写坏了不让程序直接炸
         print(f"[警告] 配置文件读不出来（{e}），将使用默认值")
 

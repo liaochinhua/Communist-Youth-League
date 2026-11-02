@@ -13,21 +13,64 @@
  * 已知问题：
  *   · 有些团支部「组织树里能点进去、列表页却不显示」（系统 bug），
  *     脚本抓不到，需要手动点进去跑文件末尾的【单个支部抓取】。
- *   · 只按团支部名筛选，往届/待转接支部请改 FILTER。
+ *   · 默认只抓 2026 级；换年级见文件开头「抓哪几届」的说明。
  * ==========================================================================*/
 
 (async () => {
   const KEY = 'zhtj_members_v1';        // localStorage 里的暂存键
 
-  // ★ 每年只需要改这一行 ★
-  // 只抓新生：['2027']
-  // 连老团员一起抓：['2023','2024','2025','2026']
-  const YEARS = ['2026'];
-  const FILTER = new RegExp('(' + YEARS.join('|') + ')级');
+  // ★ 抓哪几届 ★
+  //
+  // 默认只抓 2026 级。想换年级，有两个办法：
+  //
+  //   办法一（推荐，不用改文件）：粘本脚本之前，先在控制台敲一行
+  //        要抓的年级 = ['2027']                       ← 只抓 2027 级
+  //        要抓的年级 = ['2023','2024','2025','2026']   ← 近几年一起抓
+  //        要抓的年级 = 'all'                          ← 所有 xx 级都抓
+  //
+  //   办法二：直接改下面这行的默认值。
+  //
+  const _want = (typeof window.要抓的年级 !== 'undefined')
+    ? window.要抓的年级
+    : ['2026'];
+
+  const YEARS = (_want === 'all')
+    ? []
+    : (Array.isArray(_want) ? _want.map(String) : [String(_want)]);
+
+  // 没指定年级时匹配任何「20xx级」
+  const FILTER = YEARS.length
+    ? new RegExp('(' + YEARS.join('|') + ')级')
+    : /20\d{2}级/;
+
+  // ★ 哪些支部不要 ★
+  //
+  // 有些支部名字里也带「2026级」，但不是学生班：
+  //   机械工程与智能制造学院2026级研究生团支部
+  //   数据学院团委待转接团支部2
+  // 默认排除「研究生」和「待转接」。
+  // 想改，粘脚本前敲：  排除支部 = /研究生|待转接|教师/
+  //
+  const EXCLUDE = (typeof window.排除支部 !== 'undefined')
+    ? new RegExp(window.排除支部)
+    : /研究生|待转接/;
 
   const sleep = ms => new Promise(r => setTimeout(r, ms));
   const store = JSON.parse(localStorage.getItem(KEY) || '{}');
   const log = (...a) => console.log('[抓取]', ...a);
+
+  log(`范围：${YEARS.length ? YEARS.join(' / ') + ' 级' : '所有年级（20xx级）'}`);
+  log(`排除：${EXCLUDE}`);
+
+  // 之前跑过的话，localStorage 里可能还留着研究生/待转接支部的数据，先清掉
+  {
+    const dirty = Object.keys(store).filter(k => EXCLUDE.test(k));
+    if (dirty.length) {
+      dirty.forEach(k => delete store[k]);
+      localStorage.setItem(KEY, JSON.stringify(store));
+      log(`已清掉旧数据里的 ${dirty.length} 个非学生支部：${dirty.join('、')}`);
+    }
+  }
 
   // 当前页的团支部行（学院层级）
   const orgRows = () => [...document.querySelectorAll('table tr')]
@@ -68,18 +111,24 @@
   log('阶段一：收集团支部清单…');
   await PAGE('首页');
   await sleep(500);
-  const names = new Set(), seen = new Set();
+  const names = new Set(), seen = new Set(), excluded = new Set();
   for (let p = 0; p < 20; p++) {
     orgRows().forEach(o => {
       const n = o.cells[1].replace(/\s+/g, '');
-      if (FILTER.test(n)) names.add(n);
+      if (!FILTER.test(n)) return;
+      if (EXCLUDE.test(n)) { excluded.add(n); return; }   // 研究生、待转接之类
+      names.add(n);
     });
     if (seen.has(sig())) break;
     seen.add(sig());
     if (!await PAGE('下一页')) break;
   }
   const targets = [...names];
-  log(`符合 ${FILTER} 的团支部 ${targets.length} 个`);
+  log(`符合条件的团支部 ${targets.length} 个`);
+  if (excluded.size) {
+    log(`已排除 ${excluded.size} 个非学生支部：`);
+    [...excluded].forEach(n => log('   ×', n));
+  }
   if (!targets.length) {
     console.warn('一个都没匹配上。当前页看到的支部名：');
     orgRows().forEach(o => console.log('   ', o.cells[1]));

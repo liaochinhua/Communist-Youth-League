@@ -18,6 +18,19 @@ def _load():
         if os.path.exists(p):
             try:
                 return json.load(open(p, encoding="utf-8-sig"))   # 兼容记事本存的 BOM
+            except json.JSONDecodeError as e:
+                msg = str(e)
+                print(f"读不了 {name}：{msg}")
+                print()
+                if "escape" in msg.lower():
+                    print("这多半是路径里的反斜杠没转义。JSON 里反斜杠是特殊字符，")
+                    print("要么写两个，要么干脆用正斜杠（更省事）：")
+                    print()
+                    print(r'   "roster": "D:\\团委档案\\花名册.xlsx"     ← 反斜杠要写两个')
+                    print(r'   "roster": "D:/团委档案/花名册.xlsx"        ← 推荐，正斜杠')
+                    print()
+                    print("Windows 上脚本两种都认，用正斜杠完全没问题。")
+                raise SystemExit(1)
             except Exception as e:
                 raise SystemExit(f"读不了 {name}：{e}")
     raise SystemExit("找不到 config.json，请把 config.example.json 复制一份改名为 config.json")

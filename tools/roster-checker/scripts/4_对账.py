@@ -58,6 +58,8 @@ _nm.loader.exec_module(NM)
 
 SECTIONS = read_sections(SRC)
 COLS = COLLEGES or [c for c in SECTIONS if SECTIONS[c]]
+# 班级 -> 学院（直接来自花名册的分段，别再猜）
+CLS2COL = {str(r[2]).strip(): col for col in COLS for r in SECTIONS.get(col, [])}
 
 
 def _load_sys():
@@ -99,9 +101,26 @@ def main():
     issues = []
     mm = collections.defaultdict(lambda: {"表格": set(), "系统": set(), "col": ""})
 
+    # ---------- 哪些学院真的被系统名单覆盖了 ----------
+    # 选了「全部学院」但只抓了部分学院时，没抓的学院不该算成"系统里没有"
+    covered_cols = set()
+    for cls, org in MAPPING.items():
+        if org:
+            col = CLS2COL.get(cls, "")
+            if col:
+                covered_cols.add(col)
+    skipped_cols = [c for c in COLS if c not in covered_cols and sys_by_org]
+    if skipped_cols:
+        print("⚠ 这些学院在系统名单里没有对应支部，本次跳过对账：")
+        print("   " + "、".join(skipped_cols))
+        print("   （只做表格内核查；要核对它们，先把这些学院也抓一遍）")
+        print()
+
     # ---------- 逐班对账 ----------
     for cls, org in (MAPPING.items() if sys_by_org else []):
-        col = next((c for c in COLS if cls in {str(r[2]).strip() for _, r in roster[cls]}), "")
+        col = CLS2COL.get(cls, "")
+        if col and col in skipped_cols:
+            continue
 
         if org is None:
             # 幽灵支部：系统组织树里能点进去，但列表页不显示（系统 bug），

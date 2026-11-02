@@ -96,12 +96,26 @@ def main():
 
     # ---------- 学院 ----------
     print()
-    print("【4/6】要核查哪些学院（花名册里怎么写的就怎么写，逗号分隔）")
+    print("【4/6】要核查哪些学院")
+    print("    花名册里怎么写就怎么写，多个用逗号分隔")
+    print("    想核全部学院：输入 all（或者 全部 / *），不用一个个列")
     old = cfg.get("colleges") or []
-    print(f"    当前：{'、'.join(old) if old else '（空 = 花名册里有几个就核几个）'}")
+    print(f"    当前：{'、'.join(old) if old else '全部学院（花名册里有几个就核几个）'}")
     v = ask("学院", "")
     if v:
-        cfg["colleges"] = [x.strip() for x in v.replace("，", ",").split(",") if x.strip()]
+        if v.lower() in ("all", "全部", "*", "所有"):
+            cfg["colleges"] = []
+            print("    已设为：全部学院")
+        else:
+            cfg["colleges"] = [x.strip() for x in v.replace("，", ",").split(",") if x.strip()
+                               and x.strip().lower() not in ("all", "全部", "*", "所有")]
+
+    # 全学院 + 系统名单：提醒一句，免得把没抓到的学院全算成"缺失"
+    if not cfg.get("colleges") and cfg.get("sys_csv"):
+        print()
+        print("    提醒：你选了全部学院，但系统名单里只有抓过的那些支部。")
+        print("    没抓到的学院会被算成「系统里没有」。要么把各学院都抓一遍再导出，")
+        print("    要么这一步只填要核的那几个学院。")
 
     # ---------- 日期格式 ----------
     print()
@@ -129,6 +143,11 @@ def main():
         cfg["jiguan_strict"] = False
 
     # ---------- 写文件 ----------
+    # 路径统一改成正斜杠：
+    #   JSON 里反斜杠是转义符，手写容易出错；Windows 上正斜杠完全可用。
+    for k in ("roster", "sys_csv"):
+        if isinstance(cfg.get(k), str) and cfg[k]:
+            cfg[k] = cfg[k].replace("\\", "/")
     cfg.setdefault("output_dir", "输出")
     cfg.setdefault("ghost_branches", {})
     with open(CFG, "w", encoding="utf-8") as f:

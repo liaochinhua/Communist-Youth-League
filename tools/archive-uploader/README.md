@@ -96,7 +96,7 @@ python --version
 如果提示 **"不是内部或外部命令"** 或 **"系统找不到指定的路径"**：
 
 * 说明装的时候没勾 PATH。最省事的办法是**重装一遍并勾上**；
-* 或者在本目录**新建一个文本文件** `python路径.txt`，里面**只写一行**解释器的完整路径：
+* 或者在本目录**新建一个文本文件** `python-path.txt`，里面**只写一行**解释器的完整路径：
 
 ```
   C:\Users\你的用户名\AppData\Local\Programs\Python\Python312\python.exe
@@ -177,7 +177,7 @@ python --version
 |磁盘|输出目录几百 KB，本地文件本身多大都行|
 
 > Windows 上的一个坑：Microsoft Store 的 `python` 有时是个空壳（运行时提示"找不到指定的路径"）。
-> 用 `where python` 确认路径，或在 `python路径.txt` 里写死解释器绝对路径。
+> 用 `where python` 确认路径，或在 `python-path.txt` 里写死解释器绝对路径。
 
 把 `config.example.json` 复制成 `config.json`，改成你自己的：
 

@@ -65,7 +65,11 @@ def main():
         import conf
         ok("配置能正常解析")
     except SystemExit as e:
-        good = bad(f"配置有问题：{e}")
+        code = e.code
+        if isinstance(code, str) and code.strip():
+            good = bad(f"配置有问题：{code}")
+        else:
+            good = bad("配置有问题，看上面的提示")
         return 1
     except Exception as e:
         good = bad(f"配置解析失败：{type(e).__name__}: {e}")
