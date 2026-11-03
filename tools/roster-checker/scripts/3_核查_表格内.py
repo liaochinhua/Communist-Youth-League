@@ -206,10 +206,11 @@ def main():
                 """情况注明里已经说明过的，不算问题"""
                 return roster.explained(_n, label)
 
-            ok, why = check_jiguan(r[4])
-            if not ok and not skip("籍贯有误"):
-                types.append("籍贯有误")
-                notes.append(why)
+            if getattr(conf, "JIGUAN_MODE", "loose") != "off":
+                ok, why = check_jiguan(r[4])
+                if not ok and not skip("籍贯有误"):
+                    types.append("籍贯有误")
+                    notes.append(why)
             for idx, label in ((6, "出生年月"), (7, "入团时间")):
                 ok, why = check_date(r[idx], label)
                 if not ok and not skip("时间格式错误"):

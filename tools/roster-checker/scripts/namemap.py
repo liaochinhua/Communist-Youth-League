@@ -9,9 +9,10 @@
     org_short("智能制造工程专业2026级1班团支部") -> "智造263"
     auto_map(花名册班级, 系统团支部)          -> {班级: 团支部}, 未匹配的两边
 """
+import csv
+import difflib
 import os
 import re
-import csv
 
 BASE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 TABLE = os.path.join(BASE, "data", "专业简称.csv")
@@ -26,6 +27,8 @@ FALLBACK = [
 
 # 花名册里常见的写法变体 -> 规范名（错别字、多余的字）
 ALIAS = {
+    "国家经济与贸易": "国际经济与贸易",          # 「国」打成「国?」——真事：有人写成"国家经济与贸易"
+    "国际经贸": "国际经济与贸易",
     "国家经济与贸易（中外合作办学）": "国际经济与贸易（中外合作办学）",
     "高分子材料和工程": "高分子材料与工程",
     "数字媒体艺术专业专升本": "数字媒体艺术（专升本）",
@@ -33,6 +36,9 @@ ALIAS = {
 }
 
 _MAJOR2SHORT = None
+
+# 最后一次 auto_map 里「靠相似度猜出来」的配对，供上层提示人工确认
+LAST_GUESSES = []
 
 
 def table():
@@ -53,14 +59,33 @@ def table():
     return m
 
 
+# 括号里的这些是「层次/办学类型」，不能当噪音删掉——
+# 「金融学（中外合作办学）261」和「金融学261」是两个不同的班。
+TAG_RE = re.compile(r"（?(专升本|中外合作办学|中美合作办学|中外|中美)）?")
+
+
+def split_tag(s):
+    """把名字里的层次标签拆出来：返回 (去掉标签的名字, 标签)
+
+    专升本 -> "专升本"；中外/中美合作办学 -> "中外"（两者当同一类）
+    """
+    tag = ""
+    m = TAG_RE.search(s)
+    if m:
+        raw = m.group(1)
+        tag = "专升本" if raw == "专升本" else "中外"
+        s = TAG_RE.sub("", s)
+    return s, tag
+
+
 def _norm(name):
     s = str(name or "").strip().replace(" ", "").replace("\u3000", "")
     s = s.replace("(", "（").replace(")", "）")
     s = re.sub(r"（\s*）", "", s)                  # 空括号
-    # 「金融学（中美合作办学）」这类说明性括号只是注解，去掉再比对；
-    # 但「（专升本）」是学历层次，必须留着，后面要单独处理
-    s = re.sub(r"（(?!专升本)[^）]*）", "", s)
+    s, _tag = split_tag(s)                        # 专升本/中外 先摘出来
+    s = re.sub(r"（[^）]*）", "", s)                 # 其余说明性括号是噪音，删掉
     s = re.sub(r"班$", "", s)
+    s = re.sub(r"(?:20)?\d{2}级", "", s)           # 年份（2026级 / 26级）
     s = re.sub(r"\d+$", "", s)
     s = s.replace("专业", "")
     s = ALIAS.get(s, s)          # 错别字/多余的字统一成规范名
@@ -96,39 +121,49 @@ def _prefix(name):
 
 
 def cls_short(cls):
-    """‘智能制造工程261’ -> ‘智造261’
+    """花名册的班级 -> 简称+班号
 
-    注意：有的花名册写成「材料科学与工程261班」，末尾带个"班"字。
-    必须先把"班"去掉再抓数字，否则班号会被丢掉，
-    整个专业的班全挤成同一个简称，配对就会大面积失败。
+    ‘智能制造工程261’          -> ‘智造261’
+    ‘材料科学与工程261班’       -> ‘材料261’    （末尾带"班"字）
+    ‘金融学（中外合作办学）261’   -> ‘金融中外261’
+    ‘化学工程与工艺（专升本）261’  -> ‘化工专升本261’
+    ‘工业智能宇树创新班（系统方向）261班’ -> ‘工智宇树261’
     """
-    s = str(cls or "").strip().replace(" ", "")
-    s = re.sub(r"[（(]\s*[）)]$", "", s)     # 去掉空括号
-    s = re.sub(r"班$", "", s)               # 末尾的「班」
-    m = re.match(r"(.+?)(\d+)$", s)
+    s = str(cls or "").strip().replace(" ", "").replace("\u3000", "")
+    s = s.replace("(", "（").replace(")", "）")
+    s = re.sub(r"（\s*）", "", s)
+    s, tag = split_tag(s)                   # 专升本 / 中外
+    s = re.sub(r"班$", "", s)
+    m = re.search(r"(\d+)$", s)
     if not m:
-        return _prefix(s)
-    return f"{_prefix(m.group(1))}{m.group(2)}"
+        return f"{_prefix(s)}{tag}"
+    return f"{_prefix(s[:m.start()])}{tag}{m.group(1)}"
 
 
 def org_short(org):
-    """‘信息与计算科学专业2026级1班团支部’ -> ‘信计261’
+    """系统团支部 -> 简称+班号
 
-    年份有两种写法：2026级（大部分）和 26级（有些支部建的时候省了「20」）。
-    两种都要认，否则土建那种全按 26 级建的学院，会被整院判成"系统里多出来"。
+    ‘信息与计算科学专业2026级1班团支部’      -> ‘信计261’
+    ‘土木类专业26级1班团支部’                -> ‘土木261’   （年份省了20）
+    ‘化学工程与工艺2026级专升本1班团支部’     -> ‘化工专升本261’（专升本写在级后面）
+    ‘金融学（中外合作办学）专业2026级1班团支部’ -> ‘金融中外261’
+    ‘工业智能专业2026级宇树创新班团支部’      -> ‘工智宇树’  （没有班号，靠后面兜底配对）
     """
-    s = str(org or "").strip()
+    s = str(org or "").strip().replace(" ", "").replace("\u3000", "")
+    s = s.replace("(", "（").replace(")", "）")
+    s = s.replace("团支部", "").replace("团支书", "")
     if "待转接" in s:
-        return s.replace("团委", "").replace("团支部", "支部")
+        return s.replace("团委", "") + "支部"
     if "研究生" in s:
-        return s.replace("团支部", "")
-    s = s.replace("团支部", "")
-    m = re.match(r"(.+?)(\d{4}|\d{2})级(\d+)班$", s)
+        return s
+
+    s, tag = split_tag(s)
+    m = re.match(r"(.+?)(\d{4}|\d{2})级(?:专升本)?(\d+)班$", s)
     if not m:
-        return _prefix(s)
+        return f"{_prefix(s)}{tag}"          # 没有班号
     year = m.group(2)
-    yy = year[2:] if len(year) == 4 else year          # 2026 -> 26
-    return f"{_prefix(m.group(1))}{yy}{m.group(3)}"
+    yy = year[2:] if len(year) == 4 else year
+    return f"{_prefix(m.group(1))}{tag}{yy}{m.group(3)}"
 
 
 def auto_map(classes, orgs, aliases=None):
@@ -147,6 +182,7 @@ def auto_map(classes, orgs, aliases=None):
         mapping: {班级: 团支部 or None}
     """
     aliases = aliases or {}
+    LAST_GUESSES.clear()
     by_class = {str(c).strip(): c for c in classes}
 
     mapping, left = {}, []
@@ -195,6 +231,30 @@ def auto_map(classes, orgs, aliases=None):
             mapping[cand[0]] = o
             left.remove(cand[0])
             used.add(o)
+
+    # 4. 剩下的按「看起来像不像」兜底 —— 人也是这么猜的
+    #    但只在班号一致时才允许，否则会把 1 班配到 2 班
+    rest_cls = [c for c in classes if not mapping[c]]
+    rest_org = [o for o in orgs if o not in used]
+    pairs = []
+    for c in rest_cls:
+        for o in rest_org:
+            a, b = cls_short(c), org_short(o)
+            da = re.search(r"(\d+)$", a)
+            db = re.search(r"(\d+)$", b)
+            if da and db and da.group(1) != db.group(1):
+                continue                      # 班号都不一样，肯定不是同一个班
+            r = difflib.SequenceMatcher(None, a, b).ratio()
+            if r >= 0.72:
+                pairs.append((r, c, o))
+    pairs.sort(reverse=True)
+    for r, c, o in pairs:
+        if mapping[c] or o in used:
+            continue
+        mapping[c] = o
+        used.add(o)
+        left.remove(c)
+        LAST_GUESSES.append((c, o, round(r, 2)))
 
     extra = [o for o in orgs if o not in used]
     return mapping, left, extra

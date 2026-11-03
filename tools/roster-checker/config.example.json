@@ -18,6 +18,8 @@
   "grade": "2026级",
 
   "_jiguan_strict": "籍贯是否严格到不许出现“省/市”字。true = 浙江省丽水市 算有误；false = 算合规（默认）。",
+  "_jiguan_mode": "off=不汇总 / loose=只报结构性问题 / strict=连省/市字也报",
+  "jiguan_mode": "loose",
   "jiguan_strict": false,
 
   "_college_aliases": "输出文件名用哪个名字：花名册叫人工智能学院，大家习惯叫数据学院。",

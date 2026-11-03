@@ -216,6 +216,8 @@ add_summary(wb2, rows_full)
 
 
 def form_of(note):
+    if "多了“省/市”字" in note or "多了省/市" in note:
+        return "⑦ 多了「省/市」字（删掉即可）"
     if "地级市名字可能写错" in note:
         return "④ 市名写错（疑似错别字）"
     if "多写了县级" in note:
@@ -230,7 +232,7 @@ def form_of(note):
         return "⑤ 只写了省，没写市"
     if "看不出省份" in note:
         return "⑥ 缺省名"
-    return "⑦ 其它"
+    return "⑧ 其它（需人工看）"
 
 
 def suggest(note):

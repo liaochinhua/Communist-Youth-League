@@ -80,6 +80,16 @@ for _c in GHOST:                       # 幽灵支部：系统里查不到，用
     MAPPING.setdefault(_c, None)
 
 
+def report_guesses():
+    """相似度猜出来的配对，必须让人看一眼"""
+    if not getattr(NM, "LAST_GUESSES", None):
+        return
+    print("以下配对是按名字相似度猜的，请确认：")
+    for cls, org, r in NM.LAST_GUESSES:
+        print(f"   {cls}  ↔  {org}   相似度 {r}")
+    print()
+
+
 def main():
     secs = SECTIONS
     sys_by_org = SYS_BY_ORG
@@ -97,6 +107,8 @@ def main():
     for org, d in sys_by_org.items():
         for n in d:
             names_in_org[n].add(org)
+
+    report_guesses()
 
     issues = []
     mm = collections.defaultdict(lambda: {"表格": set(), "系统": set(), "col": ""})

@@ -126,21 +126,30 @@ def main():
     if v in ("dot", "cn"):
         cfg["date_style"] = v
 
-    # ---------- 籍贯严格度 ----------
+    # ---------- 籍贯怎么处理 ----------
     print()
-    print("【6/7】籍贯是否严格到「不许出现省、市两个字」？")
+    print("【6/7】籍贯问题要不要汇总？")
     print()
-    print("    严格：浙江丽水 ✅   浙江省丽水市 ❌")
-    print("    宽松：浙江丽水 ✅   浙江省丽水市 ✅")
+    print("    这是三选一，先想清楚再选（主任的口径：全算共性问题就选 1）：")
     print()
-    print("    提示：实测 394 人里有 85 人（34%）写了省/市字。")
-    print("    多数团委把它当共性问题，不逐人报，所以默认宽松。")
-    print(f"    当前：{'严格' if cfg.get('jiguan_strict') else '宽松'}")
-    v = ask("要用严格模式吗（y/t = 严格，n/f = 宽松，回车不变）", "").lower()
-    if v in ("y", "t", "yes", "true", "是"):
-        cfg["jiguan_strict"] = True
-    elif v in ("n", "f", "no", "false", "否"):
-        cfg["jiguan_strict"] = False
+    print("      1 = 不汇总      籍贯一律不报，各学院自己拿回去改")
+    print("      2 = 宽松        只报结构性问题（县当市、多写县、缺省名）")
+    print("                      「浙江省丽水市」这种写法算合规")
+    print("      3 = 严格        「浙江省丽水市」也算错，不许出现省/市字")
+    print()
+    print("    实测 394 人里：宽松报 151 条，严格报 236 条（多出来的是省/市字）")
+    cur = cfg.get("jiguan_mode")
+    if not cur:
+        cur = "strict" if cfg.get("jiguan_strict") else "loose"
+    print(f"    当前：{ {'off': '不汇总', 'loose': '宽松', 'strict': '严格'}.get(cur, cur) }")
+    v = ask("选哪个（1/2/3，回车保持不变）", "")
+    if v in ("1", "off", "不汇总", "0"):
+        cfg["jiguan_mode"] = "off"
+    elif v in ("2", "loose", "宽松"):
+        cfg["jiguan_mode"] = "loose"
+    elif v in ("3", "strict", "严格"):
+        cfg["jiguan_mode"] = "strict"
+    cfg["jiguan_strict"] = cfg.get("jiguan_mode") == "strict"
 
     # ---------- 整班跳过 ----------
     print()
@@ -174,7 +183,7 @@ def main():
     print("  年级    ：", cfg.get("grade", ""))
     print("  学院    ：", "、".join(cfg.get("colleges") or []) or "（全部）")
     print("  时间格式：", cfg.get("date_style", "dot"))
-    print("  籍贯口径：", "严格（不许出现省/市字）" if cfg.get("jiguan_strict") else "宽松")
+    print("  籍贯口径：", {"off": "不汇总", "loose": "宽松", "strict": "严格"}.get(cfg.get("jiguan_mode"), "宽松"))
     _ex = cfg.get("exclude_classes") or []
     print("  整班跳过：", "、".join(_ex) if _ex else "（无）")
     print("=" * 60)

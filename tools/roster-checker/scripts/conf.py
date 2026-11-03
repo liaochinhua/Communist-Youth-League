@@ -61,7 +61,15 @@ GRADE = C.get("grade") or ""
 # 籍贯是否严格到「不能带省/市字」：浙江丽水 ✅  浙江省丽水市 ❌
 # 默认关闭。有的团委口径是「带省市区划字算有误」，但实测 34% 的人都这么写，
 # 属共性问题，逐人列出来没有意义，所以默认不报。
-JIGUAN_STRICT = C.get("jiguan_strict", False)
+# 籍贯怎么处理，三档：
+#   off    完全不汇总（主任口径：全算共性问题，各学院自己拿回去改）
+#   loose  只报结构性问题（县当市、多写县、缺省…），「省/市」字不算错
+#   strict 连「省/市」字也不许出现
+_MODE = (C.get("jiguan_mode") or "").strip().lower()
+if _MODE not in ("off", "loose", "strict"):
+    _MODE = "strict" if C.get("jiguan_strict") else "loose"
+JIGUAN_MODE = _MODE
+JIGUAN_STRICT = _MODE == "strict"
 
 # 不参与对账的班级（按名字包含匹配）。
 # 用途：研究生班、成教班这类团委明确「不用管」的班级。
