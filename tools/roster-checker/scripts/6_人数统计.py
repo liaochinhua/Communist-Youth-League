@@ -240,7 +240,7 @@ for row in ws3.iter_rows(min_row=2, max_row=ws3.max_row):
     row[4].alignment = Alignment(wrap_text=True, vertical="center")
 ws3.freeze_panes = "A2"
 
-wb.save(DST)
+conf.save_wb(wb, DST)
 
 print("=== 按学院 ===")
 for r in ws.iter_rows(min_row=2, values_only=True):

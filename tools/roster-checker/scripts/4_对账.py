@@ -103,6 +103,13 @@ def main():
             roster[str(r[2]).strip()].append((col, r))
             name_index[NM_R.norm_name(r[3])].append((col, r))
 
+    # 标黄 / 有情况注明的人：整行跳过，任何方向都不该报
+    skipped_names = set()
+    for col in COLS:
+        for r in secs.get(col, []):
+            if NM_R.skip_row(r):
+                skipped_names.add(NM_R.norm_name(r[3]))
+
     names_in_org = collections.defaultdict(set)     # 姓名 -> 出现的团支部
     for org, d in sys_by_org.items():
         for n in d:
@@ -154,8 +161,11 @@ def main():
     for k, g in (groups.items() if sys_by_org else []):
         org = g["org"]
         classes = g["classes"]
-        cls_names = {str(r[3]).strip() for c in classes for _, r in roster[c]}
-        cls_rows = {str(r[3]).strip(): r for c in classes for _, r in roster[c]}
+        # 标黄 / 写了情况注明的行整行跳过 —— 这些人不参与对账，
+        # 否则会把「团委已经记录过的人」又报成一次「系统里没有」
+        active = [(c, r) for c in classes for _, r in roster[c] if not NM_R.skip_row(r)]
+        cls_names = {NM_R.norm_name(r[3]) for _, r in active}
+        cls_rows = {NM_R.norm_name(r[3]): r for _, r in active}
         col = next((CLS2COL.get(c, "") for c in classes if CLS2COL.get(c)), "")
         if col and col in skipped_cols:
             continue
@@ -195,6 +205,8 @@ def main():
 
         # 系统有、本班没有
         for n in sorted(sys_names - cls_names):
+            if n in skipped_names:
+                continue                      # 这个人是标黄/有注明的，不报
             others = names_in_org[n] - {org}
             if n in name_index:      # 表格里别处有这个人 -> 班级不符
                 where = "、".join(sorted({str(r[2]).strip() for _, r in name_index[n]}))
@@ -309,7 +321,7 @@ def main():
         ws2.freeze_panes = "A2"
 
     path = os.path.join(OUT_DIR, "对账结果.xlsx")
-    wb.save(path)
+    conf.save_wb(wb, path)
     print(f"\n明细: {path}")
 
 

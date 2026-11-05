@@ -14,7 +14,8 @@
  *   1. 登录智慧团建，点右上角「全局搜索」，确认页面能打开
  *   2. F12 → Console/控制台，把本文件整段粘进去
  *   3. 先跑【自检】：确认接口通、结果对得上
- *   4. 把待核对的姓名贴进 RAW（一行一个），再跑【批量核对】
+ *   4. 把「缺失名单.txt」的内容复制到剪贴板，敲  全局搜索批量()
+ *      （也可以直接改下面 RAW 里那几个名字，或让它弹框问你）
  *   5. 自动下载 CSV，每行一个人、每次命中一行
  * ==========================================================================*/
 
@@ -64,15 +65,44 @@ async function 单个搜索(name) {
 
 /* ---------------------------------------------------------------------------
  * 【批量核对】
+ *
+ * 名单从哪来（按顺序找）：
+ *   1) 下面这个 RAW 里写了真名字      ← 想写死就改这里
+ *   2) 剪贴板                          ← 推荐：把「缺失名单.txt」全选复制，再跑
+ *   3) 弹出的输入框
  * -------------------------------------------------------------------------*/
-window.全局搜索批量 = async () => {
-  // ① 把名字贴这里，一行一个（从「缺失名单.txt」直接复制）
-  const RAW = `
+var RAW = `
 张三
 李四
 `;
-  const NAMES = [...new Set(RAW.split(/[\s,，]+/).filter(Boolean))];
-  if (!NAMES.length) { console.warn('先把名字贴进 RAW'); return; }
+async function 取名单() {
+  // ① 源码里写了真名字（不是模板里的张三李四）就直接用
+  if (typeof RAW !== 'undefined' && RAW) {
+    const ns = [...new Set(RAW.split(/[\s,，]+/).filter(Boolean))];
+    if (ns.length && !(ns.length <= 2 && ns.includes('张三') && ns.includes('李四'))) return ns;
+  }
+  // ② 读剪贴板：先把「缺失名单.txt」的内容复制，再跑
+  try {
+    const txt = await navigator.clipboard.readText();
+    const ns = [...new Set(String(txt || '').split(/[\s,，]+/).filter(Boolean))];
+    if (ns.length) {
+      console.log(`从剪贴板读到 ${ns.length} 个名字`);
+      return ns;
+    }
+  } catch (e) {
+    console.warn('读不了剪贴板（可能没授权），改用手动输入');
+  }
+  // ③ 手动输入
+  const txt = prompt('把名字粘进来（空格/逗号/换行都行）：', '');
+  return [...new Set(String(txt || '').split(/[\s,，]+/).filter(Boolean))];
+}
+
+window.全局搜索批量 = async () => {
+  const NAMES = await 取名单();
+  if (!NAMES.length) {
+    console.warn('没拿到名字。先把缺失名单复制到剪贴板，再跑 全局搜索批量()');
+    return;
+  }
 
   const sleep = ms => new Promise(r => setTimeout(r, ms));
   const out = [];
@@ -112,3 +142,8 @@ window.全局搜索批量 = async () => {
   a.download = '全局搜索结果.csv';
   a.click();
 };
+
+console.log('%c全局搜索核对 已就绪', 'color:#c00;font-weight:bold');
+console.log('  ① 先自检：  全局搜索自检(\'你的名字\')');
+console.log('  ② 把缺失名单复制到剪贴板，然后：  全局搜索批量()');
+console.log('  ⚠ 括号要英文半角 ( )，中文（）会报 SyntaxError');

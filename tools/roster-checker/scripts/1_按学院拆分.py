@@ -19,12 +19,13 @@ TARGETS = {
 HEAD = ["序号", "学号", "专业班级", "姓名", "籍贯", "性别", "出生年月", "入团时间", "入团地点", "备注"]
 WIDTH = [6, 14, 26, 10, 20, 6, 10, 10, 34, 12]
 
-wb_in = openpyxl.load_workbook(SRC, data_only=True)
-ws_in = wb_in.active
+# 统一走 roster 的读取，.xls / .xlsx 都支持
+import roster
 
 # ---------- 1. 按"只有第一列有值"的行切段 ----------
 sections, cur, buf = {}, None, []
-for row in ws_in.iter_rows(min_row=1, values_only=True):
+for _vals, _yellow in roster._read_raw(SRC):
+    row = list(_vals)
     a = row[0]
     rest = [c for c in row[1:] if c not in (None, "")]
     is_title = a not in (None, "") and not rest
@@ -96,7 +97,7 @@ for key, fname in TARGETS.items():
     ws.auto_filter.ref = f"A2:J{len(rows) + 2}"
 
     path = os.path.join(OUT_DIR, fname)
-    wb.save(path)
+    conf.save_wb(wb, path)
     print(f"写出 {fname}  {len(rows)} 人  {os.path.getsize(path) // 1024} KB")
 
 print("\n输出目录:", OUT_DIR)

@@ -98,7 +98,7 @@ for key in ALL_COLLEGES:
     ws3.freeze_panes = "A3"
 
     path = os.path.join(OUT, f"{fname}-{conf.GRADE}团员核查.xlsx")
-    wb.save(path)
+    conf.save_wb(wb, path)
 
     # 另存一份纯姓名清单，可直接粘进 9_全局搜索核对.js 的 RAW
     # 问题清单的列：0 学院 / 1 专业班级 / 2 姓名 / 3 学号 / 4 问题说明

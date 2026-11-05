@@ -15,6 +15,7 @@ import collections
 import openpyxl
 
 import conf
+import roster
 
 BASE = conf.BASE
 DATA = conf.DATA
@@ -77,19 +78,25 @@ def clean(cls):
 
 
 def read_sections(path):
-    ws = openpyxl.load_workbook(path, data_only=True, read_only=True).active
+    # 走 roster 的统一读取，这样 .xls / .xlsx 都支持
+    # （8 号脚本以前自己开 openpyxl，别人发来 .xls 就崩在这里）
     secs, cur, buf = {}, None, []
-    for row in ws.iter_rows(min_row=1, values_only=True):
-        a, rest = row[0], [c for c in row[1:] if c not in (None, "")]
+    for vals, _yellow in roster._read_raw(path):
+        row = list(vals)
+        a = row[0] if row else None
+        rest = [c for c in row[1:] if c not in (None, "")]
         if a not in (None, "") and not rest:
             if cur:
                 secs[cur] = buf
             name = str(a).strip()
+            for pre in ("院系团委：", "院系团委:", "团委：", "团委:"):
+                if name.startswith(pre):
+                    name = name[len(pre):].strip()
             cur = None if name.startswith("合计") or name.startswith("团员") else name
             buf = []
             continue
-        if cur and row[3] and str(row[0]).strip() != "序号":
-            buf.append(list(row[:10]))
+        if cur and len(row) > 3 and row[3] and str(row[0]).strip() != "序号":
+            buf.append(row[:10])
     if cur:
         secs[cur] = buf
     return secs

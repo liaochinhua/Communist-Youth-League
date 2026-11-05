@@ -51,7 +51,36 @@ EXPLAINED_BY = {
     "学号重复": ["学号", "重复"],
 }
 
-YELLOW = ("FFFFFF00",)          # Excel 的"黄色"填充
+"""标黄的判断依据是**颜色本身**，不是某个固定的色号。
+
+Excel 里「黄色」有好几种：
+    FFFF00      标准黄
+    FFFF99      浅黄（学校最常用这个）
+    FFFFCC      更浅的黄
+所以按 RGB 判断：R、G 都够亮、B 明显偏暗，就算黄。
+白、灰、浅蓝、浅绿都不会命中。
+"""
+
+
+def rgb_is_yellow(rgb):
+    """rgb 可以是 (r, g, b) 或 'FFFF99' / 'FFFFFF99' 这样的字符串"""
+    if not rgb:
+        return False
+    if isinstance(rgb, str):
+        h = rgb.strip()[-6:]
+        if len(h) != 6:
+            return False
+        try:
+            r, g, b = int(h[0:2], 16), int(h[2:4], 16), int(h[4:6], 16)
+        except ValueError:
+            return False
+    else:
+        try:
+            r, g, b = rgb[0], rgb[1], rgb[2]
+        except (TypeError, IndexError):
+            return False
+    # 黄 = 红绿都亮、蓝明显偏暗；白/灰/浅蓝/浅绿都不会命中
+    return r >= 200 and g >= 200 and (r - b) >= 40 and (g - b) >= 40
 
 
 def _clean(v):
@@ -70,7 +99,7 @@ def _is_yellow(cell):
         rgb = getattr(f.start_color, "rgb", None)
     except Exception:
         return False
-    return isinstance(rgb, str) and rgb.upper() in YELLOW
+    return rgb_is_yellow(rgb)
 
 
 def _fix_date(v, style):
@@ -172,24 +201,83 @@ def norm_name(s):
     return re.sub(r"[\s\u3000\u00a0\ufeff]+", "", str(s or ""))
 
 
-def load(path, single_college="未命名学院", date_style="dot"):
-    """返回 (rows, sections)
+def _read_xls(path):
+    """老版 .xls（微信里传的、别人另存的，经常是这个格式）
 
-    rows     : [(学院, [12 个字段]), …]
-    sections : {学院: [[12 个字段], …]}
+    openpyxl 读不了，要用 xlrd。没装的话给一句人话，而不是甩一堆 traceback。
     """
+    try:
+        import xlrd
+    except ImportError:
+        raise SystemExit(
+            "这是老版 .xls 文件，需要额外装一个库才能读：\n"
+            "\n"
+            "   pip install xlrd\n"
+            "\n"
+            "或者用 Excel / WPS 打开它，另存为 .xlsx（推荐，以后就不用装了）。\n"
+            f"文件：{path}"
+        )
+
+    bk = xlrd.open_workbook(str(path), formatting_info=True)
+    sh = bk.sheet_by_index(0)
+    raw = []
+    for r in range(sh.nrows):
+        vals, yellow = [], ""
+        for c in range(sh.ncols):
+            cell = sh.cell(r, c)
+            v = cell.value
+            if cell.ctype == xlrd.XL_CELL_DATE:
+                try:
+                    v = xlrd.xldate.xldate_as_datetime(v, bk.datemode)
+                except Exception:
+                    pass
+            vals.append(v)
+            try:                                    # 标黄的行要跳过
+                xf = bk.xf_list[cell.xf_index]
+                idx = xf.background.pattern_colour_index
+                if rgb_is_yellow(bk.colour_map.get(idx)):
+                    yellow = "Y"
+            except Exception:
+                pass
+        raw.append((vals, yellow))
+    return raw
+
+
+def _read_raw(path):
+    """统一读成 [(一行值, 是否标黄)]；.xls 和 .xlsx 都支持"""
+    if str(path).lower().endswith(".xls"):
+        return _read_xls(path)
+
     ws = openpyxl.load_workbook(path, data_only=True).active
     raw = []
     for row in ws.iter_rows():
         vals = [c.value for c in row]
         yellow = "Y" if any(_is_yellow(c) for c in row) else ""
         raw.append((vals, yellow))
+    return raw
+
+
+def load(path, single_college="未命名学院", date_style="dot"):
+    """返回 (rows, sections)
+
+    rows     : [(学院, [12 个字段]), …]
+    sections : {学院: [[12 个字段], …]}
+    """
+    raw = _read_raw(path)
 
     header_idx, header = _find_header(raw)
     sections, cur, buf = {}, None, []
     mode = "single"
     if header_idx is not None and any(_is_section_row(v) for v, _ in raw[:header_idx]):
         mode = "sections"
+
+    def _college(v):
+        """分段名清洗：去掉「院系团委：」这类前缀，只留学院名"""
+        t = _clean(v)
+        for pre in ("院系团委：", "院系团委:", "团委：", "团委:"):
+            if t.startswith(pre):
+                t = t[len(pre):].strip()
+        return t
 
     def rec(vals, yellow, idx):
         out = _extract(vals, idx, date_style)
@@ -202,7 +290,7 @@ def load(path, single_college="未命名学院", date_style="dot"):
             if _is_section_row(vals):
                 if cur:
                     sections[cur] = buf
-                cur, buf = _clean(vals[0]), []
+                cur, buf = _college(vals[0]), []
                 # 分段表只有第一个学院带表头，切换分段时不要清空列映射
                 continue
             cells = [_clean(c) for c in vals]

@@ -12,6 +12,35 @@ BASE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DATA = os.path.join(BASE, "data")
 
 
+def save_wb(wb, path):
+    """存 xlsx。文件正被 Excel/WPS 打开时会锁住，这里重试，实在不行换个名字存。
+
+    直接抛 PermissionError 的话，用户看到一大段 traceback，
+    根本不知道「关掉那个文件」就是解决办法。
+    """
+    import time
+
+    for _ in range(3):
+        try:
+            wb.save(path)
+            return path
+        except PermissionError:
+            time.sleep(0.6)
+
+    # 还被占用：另存一份，别让整次运行白跑
+    base, ext = os.path.splitext(path)
+    for n in range(2, 100):
+        alt = f"{base}({n}){ext}"
+        try:
+            wb.save(alt)
+            print(f"⚠ {os.path.basename(path)} 正被 Excel/WPS 打开，存成了 {os.path.basename(alt)}")
+            print("  （关掉那个文件，下次就能直接覆盖）")
+            return alt
+        except PermissionError:
+            continue
+    raise SystemExit(f"存不了 {path}：文件一直被占用，先关掉 Excel/WPS 再跑")
+
+
 def _load():
     for name in ("config.json", "config.example.json"):
         p = os.path.join(BASE, name)

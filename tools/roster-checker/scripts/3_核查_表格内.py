@@ -283,7 +283,7 @@ def main():
         ws2.column_dimensions[get_column_letter(j)].width = w
 
     path = os.path.join(OUT_DIR, "核查结果-表格内问题.xlsx")
-    wb.save(path)
+    conf.save_wb(wb, path)
 
     print(f"源文件: {os.path.basename(SRC)}")
     for col in cols:

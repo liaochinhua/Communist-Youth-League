@@ -207,7 +207,7 @@ def add_summary(wb, rows):
 wb = openpyxl.Workbook()
 write_list(wb, rows_plain + org_rows)
 add_summary(wb, rows_plain)
-wb.save(DST_MAIN)
+conf.save_wb(wb, DST_MAIN)
 
 # ---------- ② 复核版 ----------
 wb2 = openpyxl.Workbook()
@@ -275,7 +275,7 @@ for j, w in enumerate([12, 26, 12, 14], 1):
 ws5.freeze_panes = "A2"
 ws5.auto_filter.ref = f"A1:D{len(miss) + 1}"
 
-wb2.save(DST_CHK)
+conf.save_wb(wb2, DST_CHK)
 
 print("① 提交版:", os.path.basename(DST_MAIN), f"{len(rows_plain)} 行")
 print("② 复核版:", os.path.basename(DST_CHK), f"{len(rows_full)} 行")
